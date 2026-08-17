@@ -1,0 +1,7 @@
+node_modules/
+/lib/
+/client/
+*.tsbuildinfo
+coverage/
+.DS_Store
+*.log

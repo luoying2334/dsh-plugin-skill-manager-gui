@@ -1,0 +1,42 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # GitHub Release creation
+  id-token: write # npm trusted publishing (OIDC)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      # trusted publishing needs npm >= 11.5
+      - run: npm install -g npm@latest
+      - run: npm install
+      - run: npm run check
+      - name: tag must match package.json version
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          TAG=${GITHUB_REF_NAME#v}
+          if [ "$PKG" != "$TAG" ]; then
+            echo "tag v$TAG != package.json $PKG" >&2
+            exit 1
+          fi
+      - run: npm publish
+      - name: create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "dsh-skill-manager ${GITHUB_REF_NAME#v}" \
+            --generate-notes \
+            --notes "npm: https://www.npmjs.com/package/dsh-skill-manager/v/${GITHUB_REF_NAME#v}"
