@@ -12,6 +12,22 @@
   gap: 16px;
 }
 
+.headerText {
+  flex: 1;
+  min-width: 0;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.headerButton {
+  white-space: nowrap;
+}
+
 .title {
   margin: 0;
   font-size: 18px;
@@ -154,20 +170,48 @@
   color: var(--dsw-text-secondary, #6b7280);
 }
 
+.groupLabel {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-text-secondary, #6b7280);
+}
+
 .check {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
   cursor: pointer;
+  min-height: 22px;
 }
 
-.select {
-  padding: 8px 10px;
+.check input {
+  accent-color: var(--dsw-accent, #4d6bfe);
+  margin: 0;
+}
+
+.workspacePath {
+  font-size: 12px;
+  color: var(--dsw-text-secondary, #9ca3af);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 360px;
+}
+
+.fileInput {
+  font-size: 13px;
+  color: inherit;
+}
+
+.fileInput::file-selector-button {
+  padding: 6px 12px;
   border: 1px solid var(--dsw-border, #e5e7eb);
   border-radius: 8px;
-  background: var(--dsw-input-bg, transparent);
+  background: var(--dsw-chip-bg, #f3f4f6);
   color: inherit;
+  cursor: pointer;
   font-size: 13px;
 }
 

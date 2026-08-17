@@ -38,6 +38,7 @@
     "prepare": "npm run build"
   },
   "dependencies": {
+    "adm-zip": "^0.6.0",
     "js-yaml": "^4.1.0"
   },
   "peerDependencies": {
@@ -79,6 +80,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-client-ui-primitives": "0.1.0-rc.6",
+    "@types/adm-zip": "^0.5.7",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",

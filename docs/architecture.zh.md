@@ -32,20 +32,22 @@
 - `dsh.bundle.patch` → 让这行成为可组合的 patch 层（`dsh plugin add` 会把它对齐进 `dsh.profile.bundles`）。
 - `dsh.client` → 告知宿主的客户端模块系统去提供浏览器 bundle（`exports["./client"]`）并随客户名册一起挂载。
 
-宿主行解析到 `lib/index.js`，其 `apply` 等待 `webServer`（`ctx.inject(['webServer'], …)`）后再注册路由。浏览器侧因包声明了 `dsh.client` 而被独立地提供并挂载。
+宿主行解析到 `lib/index.js`，其 `apply` 等待 `webServer` + `workspaceRegistry`（`ctx.inject(['webServer', 'workspaceRegistry'], …)`）后再注册路由。浏览器侧因包声明了 `dsh.client` 而被独立地提供并挂载。
 
 ## 线协议
 
-所有路由都在 `/skill-manager` 前缀下，请求与响应均为 JSON，带 `cache-control: no-store`。
+所有路由都在 `/skill-manager` 前缀下，请求与响应均为 JSON，带 `cache-control: no-store`；导入路由的请求体为原始 ZIP 字节。
 
 | 方法 | 路径 | 请求体 / 查询 | 作用 |
 |---|---|---|---|
-| `GET` | `/skill-manager/list` | — | 返回两个范围合并、按名称排序的 `{ skills: SkillSummary[] }`。 |
-| `GET` | `/skill-manager/read` | `?name=&scope=` | 返回单个 `SkillBody`（frontmatter + 正文），或 `404`。 |
-| `POST` | `/skill-manager/write` | `SkillWriteRequest` | 新建或更新技能，返回新的 `SkillSummary`。 |
-| `POST` | `/skill-manager/remove` | `{ name, scope }` | 删除技能，返回 `{ removed }`。 |
+| `GET` | `/skill-manager/list` | — | 返回全局根与每个工作区根合并的 `{ skills: SkillSummary[] }`。 |
+| `GET` | `/skill-manager/workspaces` | — | 从 `workspaceRegistry.list()` 返回 `{ workspaces: WorkspaceInfo[] }`。 |
+| `GET` | `/skill-manager/read` | `?name=&scope=&workspace=` | 返回单个 `SkillBody`（frontmatter + 正文），或 `404`。 |
+| `POST` | `/skill-manager/write` | `SkillWriteRequest`（含 `targets[]`） | 在每一个 target 新建或更新技能，返回新的 summaries。 |
+| `POST` | `/skill-manager/remove` | `{ name, target }` | 从单个 target 删除技能，返回 `{ removed }`。 |
+| `POST` | `/skill-manager/import` | `?scope=&workspace=` + ZIP 字节 | 把 zip 解压进单个 target，返回 `{ imported }`。 |
 
-类型统一定义在 `src/types.ts`，两端共享（客户端会内联进自己的 bundle）。
+target 为 `{ scope: 'user' }` 或 `{ scope: 'workspace', workspacePath }`。类型统一定义在 `src/types.ts`，两端共享（客户端会内联进自己的 bundle）。
 
 ## 技能文件格式
 

@@ -2,7 +2,7 @@
 
 [中文](README.zh.md) | English
 
-Graphical **skill manager** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`). Create, edit, and delete `SKILL.md` skills from the Web settings UI — no terminal, no hand-edited YAML frontmatter.
+Graphical **skill manager** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`). Create, edit, import, and delete `SKILL.md` skills from the Web settings UI — no terminal, no hand-edited YAML frontmatter.
 
 | | |
 |---|---|
@@ -12,11 +12,12 @@ Graphical **skill manager** for [DeepSeek Harness](https://github.com/deepseek-a
 
 ## Features
 
-- **List** managed skills with their description, scope, and invocation flags.
-- **Create** a new skill through a form: name (kebab-case), description, optional `whenToUse`, scope, model/user invocation toggles, and the Markdown instruction body.
+- **List** managed skills with their description, location, and invocation flags.
+- **Create** a new skill through a form: name (kebab-case), description, optional `whenToUse`, install location, model/user invocation toggles, and the Markdown instruction body.
 - **Edit** an existing skill (the name is immutable while editing — rename by recreating).
 - **Delete** with a confirmation step.
-- **Two scopes**: `user` (machine-global, `$DSH_HOME/skills`) and `project` (workspace-local, `<cwd>/.dsh/skills`) — the same roots the built-in `skill-filesystem` provider already scans, so anything you write is picked up by the harness without a restart.
+- **Import a ZIP** of skills (`<name>/SKILL.md` or `<name>.md`, plus nested resources) into one or more locations.
+- **Global + workspaces**: install to the machine-global root (`$DSH_HOME/skills`) and/or tick any of the workspaces the harness already tracks (`<workspace>/.dsh/skills`) — the same roots the built-in `skill-filesystem` provider scans, so anything you write is picked up without a restart.
 - Bilingual (中文 / English) and theme-aware, rendered with the native DSH UI primitives.
 
 ## Install
@@ -32,12 +33,12 @@ Restart `dsh web`, then open **Settings → Skills**.
 ## Usage
 
 1. Open **Settings → Skills**.
-2. Click **New skill**, fill in the form, and **Save**.
+2. Click **New skill**, fill in the form, tick one or more install locations, and **Save**. Or click **Import ZIP** to bring in a batch of skills.
 3. The skill lands as a directory bundle:
 
    ```
-   $DSH_HOME/skills/<name>/SKILL.md        # scope: user
-   <workspace>/.dsh/skills/<name>/SKILL.md # scope: project
+   $DSH_HOME/skills/<name>/SKILL.md          # global (user)
+   <workspace>/.dsh/skills/<name>/SKILL.md   # one workspace
    ```
 
 4. The built-in skill discovery picks it up on the next pass — the model can then load it via the `skill` tool, and the `/`-trigger menu offers it for user invocation.
@@ -46,14 +47,14 @@ Restart `dsh web`, then open **Settings → Skills**.
 
 The package is a single dual-face bundle (host + browser), following the standard out-of-tree plugin shape:
 
-- **Host** (`src/index.ts`) injects `webServer` and registers HTTP routes under `/skill-manager` that read and write `SKILL.md` bundles.
+- **Host** (`src/index.ts`) injects `webServer` + `workspaceRegistry` and registers HTTP routes under `/skill-manager` that read and write `SKILL.md` bundles.
 - **Browser** (`src/client/`) registers a `settings.section` and drives the routes with `fetch`.
 
 See [docs/architecture.md](docs/architecture.md) for the wire protocol, security model, and directory layout.
 
 ## Security
 
-Mutating routes (`write`, `remove`) write files with the host user's permissions, so they are **loopback-pinned and same-origin only** — the same boundary the harness uses for its own privileged operations. Read routes (`list`, `read`) are read-only.
+Mutating routes (`write`, `remove`, `import`) write files with the host user's permissions, so they are **loopback-pinned and same-origin only** — the same boundary the harness uses for its own privileged operations. Read routes (`list`, `read`, `workspaces`) are read-only. ZIP import sanitizes every entry path so no `..` or absolute path can escape the target root.
 
 ## Development
 
@@ -73,6 +74,7 @@ src/
   index.ts               host entry: mounts HTTP routes on webServer
   routes.ts              /skill-manager route dispatch
   skills.ts              SKILL.md filesystem service (list/read/write/remove)
+  import.ts              ZIP import (safe extraction)
   http.ts                JSON + same-origin + loopback helpers
   types.ts               shared wire types
   client/

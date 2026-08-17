@@ -48,6 +48,11 @@ export function assertLocalMutation(request: IncomingMessage): string | null {
 
 /** Read and parse a JSON request body, rejecting anything over the cap. */
 export async function readJsonBody(request: IncomingMessage, maxBytes = 256 * 1024): Promise<unknown> {
+  return JSON.parse((await readBody(request, maxBytes)).toString('utf8')) as unknown
+}
+
+/** Read a raw request body as a buffer, rejecting anything over the cap. */
+export async function readBody(request: IncomingMessage, maxBytes = 16 * 1024 * 1024): Promise<Buffer> {
   const chunks: Buffer[] = []
   let size = 0
   for await (const chunk of request) {
@@ -56,5 +61,5 @@ export async function readJsonBody(request: IncomingMessage, maxBytes = 256 * 10
     if (size > maxBytes) throw new Error('request body too large')
     chunks.push(buffer)
   }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
+  return Buffer.concat(chunks)
 }

@@ -32,20 +32,22 @@ The package manifest carries two declarations:
 - `dsh.bundle.patch` → makes the row a composable patch layer (so `dsh plugin add` reconciles it into `dsh.profile.bundles`).
 - `dsh.client` → tells the host's client-module system to serve the browser bundle (`exports["./client"]`) and mount it beside the shipped client roster.
 
-The host row resolves to `lib/index.js`, whose `apply` waits for `webServer` (`ctx.inject(['webServer'], …)`) and registers the routes once it exists. The browser half is served and mounted independently because the package declares `dsh.client`.
+The host row resolves to `lib/index.js`, whose `apply` waits for `webServer` + `workspaceRegistry` (`ctx.inject(['webServer', 'workspaceRegistry'], …)`) and registers the routes once they exist. The browser half is served and mounted independently because the package declares `dsh.client`.
 
 ## Wire protocol
 
-All routes live under the `/skill-manager` prefix. Requests and responses are JSON with `cache-control: no-store`.
+All routes live under the `/skill-manager` prefix. Requests and responses are JSON with `cache-control: no-store`; the import route carries a raw ZIP body.
 
 | Method | Path | Body / query | Effect |
 |---|---|---|---|
-| `GET` | `/skill-manager/list` | — | Returns `{ skills: SkillSummary[] }` across both scopes, sorted by name. |
-| `GET` | `/skill-manager/read` | `?name=&scope=` | Returns one `SkillBody` (frontmatter + body), or `404`. |
-| `POST` | `/skill-manager/write` | `SkillWriteRequest` | Creates or updates a skill; returns the new `SkillSummary`. |
-| `POST` | `/skill-manager/remove` | `{ name, scope }` | Deletes a skill; returns `{ removed }`. |
+| `GET` | `/skill-manager/list` | — | Returns `{ skills: SkillSummary[] }` across the global root and every workspace root. |
+| `GET` | `/skill-manager/workspaces` | — | Returns `{ workspaces: WorkspaceInfo[] }` from `workspaceRegistry.list()`. |
+| `GET` | `/skill-manager/read` | `?name=&scope=&workspace=` | Returns one `SkillBody` (frontmatter + body), or `404`. |
+| `POST` | `/skill-manager/write` | `SkillWriteRequest` (with `targets[]`) | Creates or updates a skill in every target; returns the new summaries. |
+| `POST` | `/skill-manager/remove` | `{ name, target }` | Deletes a skill from one target; returns `{ removed }`. |
+| `POST` | `/skill-manager/import` | `?scope=&workspace=` + ZIP body | Extracts the zip into one target; returns `{ imported }`. |
 
-Types are defined once in `src/types.ts` and shared by both sides (the client inlines them into its bundle).
+A `target` is `{ scope: 'user' }` or `{ scope: 'workspace', workspacePath }`. Types are defined once in `src/types.ts` and shared by both sides (the client inlines them into its bundle).
 
 ## Skill file format
 
@@ -72,6 +74,7 @@ Invocation flags mirror the DSH `skill-filesystem` contract: `modelInvocable: fa
 - **Mutating routes are loopback + same-origin only** (`assertLocalMutation`): the socket peer must be `127.0.0.1`/`::1` and the `Origin` must match the `Host`. This prevents a LAN client admitted by `--trusted-host`, or a cross-site page, from writing skill files with the host user's permissions.
 - **Read routes are read-only** and sit inside the same browser-trust boundary as the rest of the web surface.
 - **Names are validated** (`kebab-case`) and descriptions required, both in the client (non-authoritative) and in `SkillStore` (authoritative).
+- **ZIP import sanitizes every entry path** (`safeEntryParts`): `..`, absolute paths, and empty paths are rejected before any file is written.
 - **No secrets**: skill files are user-authored instructions; the plugin never reads credentials or environment variables and never uploads anything.
 
 ## Client bundle build

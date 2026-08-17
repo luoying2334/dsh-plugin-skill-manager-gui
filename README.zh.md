@@ -2,7 +2,7 @@
 
 中文 | [English](README.md)
 
-面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）的**图形化技能管理器**。在网页设置里即可新建、编辑、删除 `SKILL.md` 技能——不用开终端，也不用手写 YAML frontmatter。
+面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）的**图形化技能管理器**。在网页设置里即可新建、编辑、导入、删除 `SKILL.md` 技能——不用开终端，也不用手写 YAML frontmatter。
 
 | | |
 |---|---|
@@ -12,11 +12,12 @@
 
 ## 功能
 
-- **列出**已管理的技能，展示描述、作用范围与调用开关。
-- **新建**技能：名称（kebab-case）、描述、可选的 `whenToUse`、作用范围、模型/用户调用开关，以及 Markdown 指令正文。
+- **列出**已管理的技能，展示描述、安装位置与调用开关。
+- **新建**技能：名称（kebab-case）、描述、可选的 `whenToUse`、安装位置、模型/用户调用开关，以及 Markdown 指令正文。
 - **编辑**已有技能（编辑时名称不可改，改名请删除后重建）。
 - **删除**，带二次确认。
-- **两种作用范围**：`user`（本机全局，`$DSH_HOME/skills`）与 `project`（工作区局部，`<cwd>/.dsh/skills`）——正是内置 `skill-filesystem` 提供者本来就会扫描的目录，所以写入后无需重启即可被识别。
+- **导入 ZIP**：把 `<name>/SKILL.md`（或 `<name>.md`，含嵌套资源）批量导入到一个或多个位置。
+- **全局 + 工作区**：可安装到本机全局根（`$DSH_HOME/skills`），也可勾选 harness 已追踪的任意工作区（`<workspace>/.dsh/skills`）——正是内置 `skill-filesystem` 提供者本来就会扫描的目录，所以写入后无需重启即可被识别。
 - 中英双语、跟随主题，使用 DSH 原生 UI 原子组件渲染。
 
 ## 安装
@@ -32,12 +33,12 @@ dsh plugin --profile web add dsh-skill-manager
 ## 使用
 
 1. 打开 **设置 → 技能**。
-2. 点击 **新建技能**，填写表单，点击 **保存**。
+2. 点击 **新建技能**，填写表单、勾选一个或多个安装位置，点击 **保存**；或点击 **导入 ZIP** 批量导入。
 3. 技能以目录 bundle 落盘：
 
    ```
-   $DSH_HOME/skills/<name>/SKILL.md        # user 范围
-   <workspace>/.dsh/skills/<name>/SKILL.md # project 范围
+   $DSH_HOME/skills/<name>/SKILL.md          # 全局（user）
+   <workspace>/.dsh/skills/<name>/SKILL.md   # 某个工作区
    ```
 
 4. 内置 skill 发现会在下一次扫描时拾取它——模型可通过 `skill` 工具加载，输入框 `/` 菜单也会把它列为可调用项。
@@ -46,14 +47,14 @@ dsh plugin --profile web add dsh-skill-manager
 
 本包是一个标准的树外插件，宿主端 + 浏览器端合一的「双面」bundle：
 
-- **宿主端**（`src/index.ts`）注入 `webServer`，在 `/skill-manager` 下注册读写 `SKILL.md` 的 HTTP 路由。
+- **宿主端**（`src/index.ts`）注入 `webServer` 与 `workspaceRegistry`，在 `/skill-manager` 下注册读写 `SKILL.md` 的 HTTP 路由。
 - **浏览器端**（`src/client/`）注册 `settings.section`，用 `fetch` 调用这些路由。
 
 线协议、安全模型与目录结构详见 [docs/architecture.zh.md](docs/architecture.zh.md)。
 
 ## 安全
 
-变更类路由（`write`、`remove`）会以宿主用户权限写文件，因此**仅限回环地址且要求同源**——与 harness 自身特权操作使用同一道边界。只读路由（`list`、`read`）不写文件。
+变更类路由（`write`、`remove`、`import`）会以宿主用户权限写文件，因此**仅限回环地址且要求同源**——与 harness 自身特权操作使用同一道边界。只读路由（`list`、`read`、`workspaces`）不写文件。ZIP 导入会逐条校验条目路径，杜绝 `..` 或绝对路径逃逸目标根目录。
 
 ## 开发
 

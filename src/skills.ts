@@ -1,8 +1,9 @@
 /**
- * Skill filesystem service: reads and writes SKILL.md bundles under the two
- * managed roots (`user` machine-global, `project` workspace-local), mirroring
- * the DSH skill-filesystem discovery roots so anything written here is picked
- * up by the harness on the next discovery pass.
+ * Skill filesystem service: reads and writes SKILL.md bundles under the
+ * managed roots — the machine-global `user` root (`$DSH_HOME/skills`) and one
+ * workspace-local root per selected workspace (`<workspace>/.dsh/skills`).
+ * Both mirror the DSH skill-filesystem discovery roots so anything written
+ * here is picked up by the harness on the next discovery pass.
  *
  * Skills are written as directory bundles `<root>/<name>/SKILL.md`. Foreign
  * flat files `<root>/<name>.md` are listed read-only but are never written.
@@ -12,13 +13,11 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { dump, load } from 'js-yaml'
-import { SKILL_NAME_RE, type SkillBody, type SkillScope, type SkillSummary, type SkillWriteRequest } from './types.ts'
+import { SKILL_NAME_RE, type SkillBody, type SkillScope, type SkillSummary, type SkillTarget, type SkillWriteRequest } from './types.ts'
 
 export interface SkillStoreConfig {
   /** Absolute directory for the machine-global skill root (default `$DSH_HOME/skills`). */
   userSkillsDir?: string
-  /** Absolute directory for the project skill root (default `<cwd>/.dsh/skills`). */
-  projectSkillsDir?: string
 }
 
 interface ParsedFrontmatter {
@@ -61,23 +60,37 @@ function serializeSkill(frontmatter: Record<string, unknown>, body: string): str
 export class SkillError extends Error {}
 
 export class SkillStore {
-  private readonly roots: Record<SkillScope, string>
+  private readonly userDir: string
 
   constructor(config: SkillStoreConfig = {}) {
     const dshHome = process.env.DSH_HOME ?? join(homedir(), '.dsh')
-    this.roots = {
-      user: resolve(config.userSkillsDir ?? join(dshHome, 'skills')),
-      project: resolve(config.projectSkillsDir ?? join(process.cwd(), '.dsh', 'skills')),
+    this.userDir = resolve(config.userSkillsDir ?? join(dshHome, 'skills'))
+  }
+
+  /** Absolute machine-global skill root. */
+  userRoot(): string {
+    return this.userDir
+  }
+
+  /** Absolute workspace-local skill root for one workspace directory. */
+  workspaceRoot(workspacePath: string): string {
+    return join(workspacePath, '.dsh', 'skills')
+  }
+
+  /** Resolve a target into its root directory plus scope metadata. */
+  resolveTarget(target: SkillTarget): { root: string; scope: SkillScope; workspacePath?: string } {
+    if (target.scope === 'user') return { root: this.userDir, scope: 'user' }
+    if (target.scope === 'workspace') {
+      if (target.workspacePath === undefined || target.workspacePath === '') {
+        throw new SkillError('workspace path is required for workspace scope')
+      }
+      return { root: this.workspaceRoot(target.workspacePath), scope: 'workspace', workspacePath: target.workspacePath }
     }
+    throw new SkillError(`invalid scope: ${String(target.scope)}`)
   }
 
-  root(scope: SkillScope): string {
-    return this.roots[scope]
-  }
-
-  /** Summaries for one scope, sorted by name. */
-  list(scope: SkillScope): SkillSummary[] {
-    const root = this.roots[scope]
+  /** Summaries under one root, sorted by name. */
+  list(root: string, scope: SkillScope, workspacePath?: string): SkillSummary[] {
     if (!existsSync(root)) return []
     const summaries: SkillSummary[] = []
     for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -85,11 +98,11 @@ export class SkillStore {
       if (entry.isDirectory()) {
         const skillFile = join(absolute, 'SKILL.md')
         if (!existsSync(skillFile)) continue
-        const summary = this.summaryFrom(scope, skillFile, entry.name, readFileSync(skillFile, 'utf8'))
+        const summary = this.summaryFrom(scope, workspacePath, skillFile, entry.name, readFileSync(skillFile, 'utf8'))
         if (summary !== null) summaries.push(summary)
       } else if (entry.isFile() && entry.name.endsWith('.md')) {
         const name = entry.name.slice(0, -3)
-        const summary = this.summaryFrom(scope, absolute, name, readFileSync(absolute, 'utf8'))
+        const summary = this.summaryFrom(scope, workspacePath, absolute, name, readFileSync(absolute, 'utf8'))
         if (summary !== null) summaries.push(summary)
       }
     }
@@ -97,19 +110,17 @@ export class SkillStore {
     return summaries
   }
 
-  listAll(): SkillSummary[] {
-    return [...this.list('user'), ...this.list('project')]
-  }
-
-  read(scope: SkillScope, name: string): SkillBody | null {
+  /** Read one skill's full body under a root, or null when absent. */
+  read(root: string, scope: SkillScope, workspacePath: string | undefined, name: string): SkillBody | null {
     this.assertName(name)
-    const found = this.findSummary(scope, name)
+    const found = this.findSummary(root, name)
     if (found === null) return null
     const { frontmatter, body } = parseSkillContent(readFileSync(found.path, 'utf8'))
     const parsed = this.parseFrontmatter(frontmatter, name)
     return {
       name,
       scope,
+      workspacePath,
       description: parsed.description ?? found.description,
       whenToUse: parsed.whenToUse,
       modelInvocable: parsed.disableModelInvocation !== true,
@@ -119,12 +130,10 @@ export class SkillStore {
     }
   }
 
-  /** Create or update a skill, returning its new summary. */
-  write(request: SkillWriteRequest): SkillSummary {
+  /** Create or update a skill under one root, returning its new summary. */
+  write(root: string, scope: SkillScope, workspacePath: string | undefined, request: SkillWriteRequest): SkillSummary {
     this.assertName(request.name)
     if (request.description.trim() === '') throw new SkillError('description is required')
-    const scope: SkillScope = request.scope
-    const root = this.roots[scope]
     const bundleDir = join(root, request.name)
     const skillFile = join(bundleDir, 'SKILL.md')
 
@@ -154,19 +163,20 @@ export class SkillStore {
       modelInvocable: request.modelInvocable,
       userInvocable: request.userInvocable,
       scope,
+      workspacePath,
       path: bundleDir,
     }
   }
 
-  /** Remove a skill bundle. Returns true when something was removed. */
-  remove(scope: SkillScope, name: string): boolean {
+  /** Remove a skill bundle under one root. Returns true when something was removed. */
+  remove(root: string, name: string): boolean {
     this.assertName(name)
-    const bundleDir = join(this.roots[scope], name)
+    const bundleDir = join(root, name)
     if (existsSync(bundleDir)) {
       rmSync(bundleDir, { recursive: true, force: true })
       return true
     }
-    const flatFile = join(this.roots[scope], `${name}.md`)
+    const flatFile = join(root, `${name}.md`)
     if (existsSync(flatFile)) {
       rmSync(flatFile, { force: true })
       return true
@@ -174,8 +184,7 @@ export class SkillStore {
     return false
   }
 
-  private findSummary(scope: SkillScope, name: string): { path: string; description: string } | null {
-    const root = this.roots[scope]
+  private findSummary(root: string, name: string): { path: string; description: string } | null {
     const bundle = join(root, name, 'SKILL.md')
     if (existsSync(bundle)) {
       const parsed = this.parseFrontmatter(parseSkillContent(readFileSync(bundle, 'utf8')).frontmatter, name)
@@ -189,7 +198,7 @@ export class SkillStore {
     return null
   }
 
-  private summaryFrom(scope: SkillScope, skillFile: string, fallbackName: string, content: string): SkillSummary | null {
+  private summaryFrom(scope: SkillScope, workspacePath: string | undefined, skillFile: string, fallbackName: string, content: string): SkillSummary | null {
     const { frontmatter } = parseSkillContent(content)
     const parsed = this.parseFrontmatter(frontmatter, fallbackName)
     const name = parsed.name ?? fallbackName
@@ -202,6 +211,7 @@ export class SkillStore {
       modelInvocable: parsed.disableModelInvocation !== true,
       userInvocable: parsed.userInvocable !== false,
       scope,
+      workspacePath,
       path: dirname(skillFile),
     }
   }

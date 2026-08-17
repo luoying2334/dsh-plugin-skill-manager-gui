@@ -1,6 +1,6 @@
 /**
  * dsh-skill-manager host entry: mounts the skill-manager HTTP routes once the
- * profile composes the `webServer` service.
+ * profile composes the `webServer` and `workspaceRegistry` services.
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -8,11 +8,11 @@ import { mountSkillRoutes, type SkillManagerConfig, type SkillManagerHost } from
 
 export const name = 'dsh-skill-manager'
 
-/** Optional cordis.yml configuration; defaults resolve `$DSH_HOME/skills` and `<cwd>/.dsh/skills`. */
+/** Optional cordis.yml configuration; `userSkillsDir` defaults to `$DSH_HOME/skills`. */
 export type Config = SkillManagerConfig
 
 export function apply(ctx: Context, config?: Config): void {
-  ctx.inject(['webServer'], (hostCtx: Context) => {
+  ctx.inject(['webServer', 'workspaceRegistry'], (hostCtx: Context) => {
     const host = hostCtx as unknown as SkillManagerHost
     const resolved: SkillManagerConfig = { ...(config ?? {}) }
     host.effect(
