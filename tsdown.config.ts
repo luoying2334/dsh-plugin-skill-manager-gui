@@ -1,5 +1,5 @@
-/**
- * Browser client bundle for the dsh-skill-manager plugin, mirroring the
+﻿/**
+ * Browser client bundle for the dsh-plugin-skill-manager-gui plugin, mirroring the
  * DeepSeek Harness client preset (packages/client/tsdown.client.ts) for an
  * external package: a closure-factory artifact that calls
  * `window.__ModuleLoader__.load({ id, factory })` and resolves externals
@@ -11,14 +11,14 @@
  * plugin-owned tags on unload).
  *
  * scripts/preflight.mjs asserts the emitted client/client.js starts with the
- * exact `window.__ModuleLoader__.load({ id: "dsh-skill-manager"` prefix.
+ * exact `window.__ModuleLoader__.load({ id: "dsh-plugin-skill-manager-gui"` prefix.
  */
 import { readFile } from 'node:fs/promises'
 import { basename, dirname, resolve as resolvePath } from 'node:path'
 import { defineConfig } from 'tsdown'
 import { transform } from 'lightningcss'
 
-const id = 'dsh-skill-manager'
+const id = 'dsh-plugin-skill-manager-gui'
 
 /**
  * Externals resolved from the loader module table at runtime. Only the
@@ -52,7 +52,7 @@ export default defineConfig({
   clean: false,
   deps: {
     // Only the loader module-table entries stay external; anything else must
-    // inline — a require() the table cannot answer is a guaranteed runtime
+    // inline 鈥?a require() the table cannot answer is a guaranteed runtime
     // throw, so never let a package dependency leak into the emitted bundle.
     neverBundle: [...CLIENT_EXTERNALS],
     alwaysBundle: (source: string) => !CLIENT_EXTERNALS.includes(source),

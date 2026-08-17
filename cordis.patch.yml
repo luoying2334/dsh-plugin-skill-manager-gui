@@ -1,6 +1,6 @@
-# dsh bundle patch: inserts this plugin into a profile's layer stack.
+﻿# dsh bundle patch: inserts this plugin into a profile's layer stack.
 # The single host row mounts the HTTP routes; the package's `dsh.client`
 # manifest additionally serves the browser settings section.
 - insert:
-    - id: dsh-skill-manager
-      name: 'dsh-skill-manager'
+    - id: dsh-plugin-skill-manager-gui
+      name: 'dsh-plugin-skill-manager-gui'

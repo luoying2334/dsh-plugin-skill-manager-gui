@@ -1,19 +1,20 @@
 # 架构
 
-`dsh-skill-manager` 是一个「双面」的树外 bundle：单个 npm 包同时贡献宿主插件与浏览器设置分区，形状与其他外部 DSH 插件（如 `dshmarket`）一致。
+`dsh-plugin-skill-manager-gui` 是一个「双面」的树外 bundle：单个 npm 包同时贡献宿主插件与浏览器设置分区，形状与其他外部 DSH 插件（如 `dshmarket`）一致。
 
 ```
-浏览器（设置 → 技能）                     宿主（Node）
+浏览器（设置 → 技能）                      宿主（Node）
 ┌──────────────────────────────┐   fetch   ┌──────────────────────────────┐
 │ client/client.js             │ ────────► │ webServer.register(...)      │
 │  SkillManager.tsx (React)    │  /skill-  │  routes.ts                   │
 │  locales.ts (zh/en)          │  manager  │  skills.ts (SkillStore)      │
-└──────────────────────────────┘           │  http.ts (守卫)              │
+└──────────────────────────────┘           │  import.ts (ZIP)             │
+                                           │  http.ts (守卫)              │
                                            └──────────────┬───────────────┘
                                                           │ fs
                                            ┌──────────────▼───────────────┐
-                                           │ $DSH_HOME/skills  (user)     │
-                                           │ <cwd>/.dsh/skills (project)  │
+                                           │ $DSH_HOME/skills  (全局)      │
+                                           │ <workspace>/.dsh/skills (工作区)│
                                            └──────────────────────────────┘
 ```
 
@@ -23,8 +24,8 @@
 
 ```yaml
 - insert:
-    - id: dsh-skill-manager
-      name: 'dsh-skill-manager'
+    - id: dsh-plugin-skill-manager-gui
+      name: 'dsh-plugin-skill-manager-gui'
 ```
 
 包的 manifest 携带两个声明：
@@ -75,6 +76,7 @@ user-invocable: true
 - **只读路由不写文件**，处于与其余 Web 界面相同的浏览器信任边界内。
 - **名称做校验**（kebab-case）、描述必填，客户端做轻量校验（非权威），`SkillStore` 做权威校验。
 - **不碰密钥**：技能文件是用户自写的指令；插件不读凭据或环境变量，也不上传任何数据。
+- **ZIP 导入逐条校验条目路径**（`safeEntryParts`）：`..`、绝对路径与空路径在写入任何文件前即被拒绝。
 
 ## 客户端 bundle 构建
 

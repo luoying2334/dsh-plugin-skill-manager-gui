@@ -1,5 +1,5 @@
-/**
- * dsh-skill-manager client: registers a "Skills" settings section rendering
+﻿/**
+ * dsh-plugin-skill-manager-gui client: registers a "Skills" settings section rendering
  * the skill manager UI. Built by tsdown into the `__ModuleLoader__` factory
  * bundle at client/client.js; the only externals are the loader module
  * table's `react` and `@deepseek-ai/dsh-client-ui-primitives` entries.
@@ -8,7 +8,7 @@ import { createElement as h } from 'react'
 import { en, zh, type Translate } from './locales.ts'
 import { SkillManager } from './SkillManager.tsx'
 
-const NS = 'dsh-skill-manager'
+const NS = 'dsh-plugin-skill-manager-gui'
 
 /** The subset of the locale service this plugin touches. */
 interface LocaleService {
@@ -29,11 +29,11 @@ interface SkillManagerClientContext {
   slots: SlotsService
 }
 
-export const name = 'dsh-skill-manager'
+export const name = 'dsh-plugin-skill-manager-gui'
 export const inject = ['slots', 'locale']
 
 export function apply(ctx: SkillManagerClientContext): void {
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-skill-manager: dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-plugin-skill-manager-gui: dictionaries')
   const t = ctx.locale.bind(NS)
 
   ctx.slots.inject('settings.section', () => ctx.slots.register({

@@ -1,4 +1,4 @@
-name: release
+﻿name: release
 on:
   push:
     tags: ['v*']
@@ -37,6 +37,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            --title "dsh-skill-manager ${GITHUB_REF_NAME#v}" \
+            --title "dsh-plugin-skill-manager-gui ${GITHUB_REF_NAME#v}" \
             --generate-notes \
-            --notes "npm: https://www.npmjs.com/package/dsh-skill-manager/v/${GITHUB_REF_NAME#v}"
+            --notes "npm: https://www.npmjs.com/package/dsh-plugin-skill-manager-gui/v/${GITHUB_REF_NAME#v}"

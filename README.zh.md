@@ -1,4 +1,4 @@
-# dsh-skill-manager
+# dsh-plugin-skill-manager-gui
 
 中文 | [English](README.md)
 
@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| npm 包 | `dsh-skill-manager` |
+| npm 包 | `dsh-plugin-skill-manager-gui` |
 | 分类 | `dsh-plugin` |
 | 许可证 | [MIT](LICENSE) |
 
@@ -23,7 +23,7 @@
 ## 安装
 
 ```sh
-dsh plugin --profile web add dsh-skill-manager
+dsh plugin --profile web add dsh-plugin-skill-manager-gui
 ```
 
 重启 `dsh web`，然后打开 **设置 → 技能**。
@@ -74,6 +74,7 @@ src/
   index.ts               宿主入口：在 webServer 上挂载 HTTP 路由
   routes.ts              /skill-manager 路由分发
   skills.ts              SKILL.md 文件服务（list/read/write/remove）
+  import.ts              ZIP 导入（安全解压）
   http.ts                JSON + 同源 + 回环校验工具
   types.ts               共享线协议类型
   client/

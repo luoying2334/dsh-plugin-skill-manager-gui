@@ -1,6 +1,6 @@
 {
-  "name": "dsh-skill-manager",
-  "description": "Graphical skill manager for DeepSeek Harness — create, edit, and delete SKILL.md skills from the web settings UI. · DSH 技能管理器：在网页设置里图形化新建、编辑、删除 SKILL.md 技能。",
+  "name": "dsh-plugin-skill-manager-gui",
+  "description": "Graphical skill manager for DeepSeek Harness — create, edit, import, and delete SKILL.md skills from the web settings UI. · DSH 技能管理器：在网页设置里图形化新建、编辑、导入、删除 SKILL.md 技能。",
   "version": "0.1.0",
   "type": "module",
   "main": "lib/index.js",
