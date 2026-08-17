@@ -30,7 +30,7 @@ npm run build
 
 1. `npm run check` passes.
 2. New behavior is covered by a test where practical.
-3. `README.md` / `README.zh.md` updated if the user-facing behavior changed.
+3. `README.md` (default, 中文) / `README.en.md` updated if the user-facing behavior changed.
 4. Commit messages are clear and self-contained.
 
 ## Release
