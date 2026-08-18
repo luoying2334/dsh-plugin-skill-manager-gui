@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2026-08-17
+
+### Added
+
+- Global / workspace scope filter for the skill list.
+- Catalog-style list (disclosure cards with status dot and scope tag), matching the Plugins → Plugin list look.
+
+### Changed
+
+- Install location now allows multiple workspaces (global stays exclusive with workspaces).
+
 ## [0.1.2] - 2026-08-17
 
 ### Changed

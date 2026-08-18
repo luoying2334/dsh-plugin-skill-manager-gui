@@ -28,7 +28,7 @@ function request(overrides: Partial<SkillWriteRequest> = {}): SkillWriteRequest 
     modelInvocable: true,
     userInvocable: true,
     content: '# Steps\n1. Read the diff',
-    target: { scope: 'user' },
+    targets: [{ scope: 'user' }],
     ...overrides,
   }
 }

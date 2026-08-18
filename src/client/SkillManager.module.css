@@ -43,6 +43,9 @@
 
 .toolbar {
   display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .search {
@@ -72,43 +75,10 @@
 }
 
 .list {
-  list-style: none;
   margin: 0;
-  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--dsw-border, #e5e7eb);
-  border-radius: 10px;
-}
-
-.rowIcon {
-  flex-shrink: 0;
-  color: var(--dsw-text-secondary, #6b7280);
-}
-
-.rowMain {
-  flex: 1;
-  min-width: 0;
-}
-
-.rowTitle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.rowName {
-  font-weight: 600;
-  font-family: var(--dsw-mono, ui-monospace, monospace);
 }
 
 .scopeTag {
@@ -117,6 +87,10 @@
   gap: 6px;
   font-size: 12px;
   color: var(--dsw-text-secondary, #6b7280);
+}
+
+.locationDot {
+  margin-right: 2px;
 }
 
 .badge {
@@ -128,13 +102,18 @@
   font-size: 11px;
 }
 
+.rowDetail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+
 .rowDesc {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 13px;
   color: var(--dsw-text-secondary, #6b7280);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .rowActions {

@@ -56,9 +56,9 @@ export interface SkillWriteRequest {
   readonly modelInvocable: boolean
   readonly userInvocable: boolean
   readonly content: string
-  /** The single install location (global root or one workspace). */
-  readonly target: SkillTarget
-  /** When editing, the skill's previous location — a different value moves it. */
+  /** One or more install locations (global, or one or more workspaces — never mixed). */
+  readonly targets: readonly SkillTarget[]
+  /** When editing, the instance's previous location — removed when not in `targets`. */
   readonly previousTarget?: SkillTarget
 }
 

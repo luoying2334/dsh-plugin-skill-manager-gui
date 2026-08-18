@@ -133,16 +133,18 @@ export function mountSkillRoutes(host: SkillManagerHost, config: SkillManagerCon
             return
           }
           const payload = (await readJsonBody(request)) as SkillWriteRequest
-          validateTarget(payload.target)
+          validateTargets(payload.targets)
           if (payload.previousTarget !== undefined) validateTarget(payload.previousTarget)
-          const entry = resolveTarget(payload.target)
-          const summary = store.write(entry.root, entry.target.scope, entry.target.workspacePath, payload)
-          // Move: when the previous location differs from the new one, remove the old copy.
-          if (payload.previousTarget !== undefined && !sameTarget(payload.previousTarget, payload.target)) {
+          const summaries = payload.targets.map((target) => {
+            const entry = resolveTarget(target)
+            return store.write(entry.root, entry.target.scope, entry.target.workspacePath, payload)
+          })
+          // Move: when the edited instance's previous location is no longer a target, remove it.
+          if (payload.previousTarget !== undefined && !payload.targets.some((target) => sameTarget(target, payload.previousTarget as SkillTarget))) {
             const previous = resolveTarget(payload.previousTarget)
             store.remove(previous.root, payload.name)
           }
-          sendJson(response, 200, { summary })
+          sendJson(response, 200, { summaries })
           return
         }
 
@@ -203,6 +205,11 @@ function validateTarget(value: unknown): asserts value is SkillTarget {
   if (target.scope === 'workspace' && typeof target.workspacePath !== 'string') {
     throw new SkillError('workspacePath is required for workspace scope')
   }
+}
+
+function validateTargets(value: unknown): asserts value is readonly SkillTarget[] {
+  if (!Array.isArray(value) || value.length === 0) throw new SkillError('at least one target is required')
+  for (const target of value) validateTarget(target)
 }
 
 function sameTarget(left: SkillTarget, right: SkillTarget): boolean {

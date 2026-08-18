@@ -1,12 +1,12 @@
 /**
- * Skill manager settings section: lists managed skills, and provides
- * create / edit / delete / ZIP-import flows backed by the host HTTP routes
- * under `/skill-manager`.
+ * Skill manager settings section: lists managed skills (catalog-style), and
+ * provides create / edit / delete / ZIP-import flows backed by the host HTTP
+ * routes under `/skill-manager`.
  */
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { createElement as h, Fragment } from 'react'
 import {
-  Button, Input, Modal, Pill,
+  Button, DisclosureRow, Input, Modal, Pill, StateDot,
   IconPlusOutline16, IconEditOutline16, IconTrashOutline16, IconSkillOutline16, IconSearchOutline16, IconDownloadOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
@@ -14,6 +14,8 @@ import {
 } from '../types.ts'
 import type { Translate } from './locales.ts'
 import css from './SkillManager.module.css'
+
+type ScopeFilter = 'all' | 'user' | 'workspace'
 
 interface SkillDraft {
   name: string
@@ -23,10 +25,10 @@ interface SkillDraft {
   userInvocable: boolean
   content: string
   originalName?: string
-  /** Previous location when editing; a different `target` on save moves the skill. */
+  /** Previous location of the instance being edited; removed when not re-targeted. */
   originalTarget?: SkillTarget
-  /** The single install location. */
-  target: SkillTarget
+  /** Install locations (global, or one or more workspaces — never mixed). */
+  targets: SkillTarget[]
 }
 
 const EMPTY_DRAFT: SkillDraft = {
@@ -36,7 +38,18 @@ const EMPTY_DRAFT: SkillDraft = {
   modelInvocable: true,
   userInvocable: true,
   content: '',
-  target: { scope: 'user' },
+  targets: [{ scope: 'user' }],
+}
+
+/** Global is exclusive; workspaces are multi-select. */
+function toggleLocation(current: readonly SkillTarget[], next: SkillTarget): SkillTarget[] {
+  if (next.scope === 'user') {
+    return current.some((target) => target.scope === 'user') ? [] : [{ scope: 'user' }]
+  }
+  const workspaces = current.filter((target) => target.scope === 'workspace')
+  const exists = workspaces.some((target) => target.workspacePath === next.workspacePath)
+  if (exists) return workspaces.filter((target) => target.workspacePath !== next.workspacePath)
+  return [...workspaces, next]
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -61,6 +74,8 @@ export function SkillManager({ t }: { t: Translate }) {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<ScopeFilter>('all')
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const [draft, setDraft] = useState<SkillDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -70,7 +85,7 @@ export function SkillManager({ t }: { t: Translate }) {
   // ZIP import state
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
-  const [importTarget, setImportTarget] = useState<SkillTarget>({ scope: 'user' })
+  const [importTargets, setImportTargets] = useState<SkillTarget[]>([{ scope: 'user' }])
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
 
@@ -95,11 +110,15 @@ export function SkillManager({ t }: { t: Translate }) {
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    if (needle === '') return skills
-    return skills.filter((skill) => (
-      skill.name.toLowerCase().includes(needle) || skill.description.toLowerCase().includes(needle)
-    ))
-  }, [skills, query])
+    return skills.filter((skill) => {
+      if (filter === 'user' && skill.scope !== 'user') return false
+      if (filter === 'workspace' && skill.scope !== 'workspace') return false
+      if (needle !== '') {
+        return skill.name.toLowerCase().includes(needle) || skill.description.toLowerCase().includes(needle)
+      }
+      return true
+    })
+  }, [skills, query, filter])
 
   const locationLabel = useCallback((target: SkillTarget): string => {
     if (target.scope === 'user') return t('scope.user')
@@ -112,6 +131,17 @@ export function SkillManager({ t }: { t: Translate }) {
       ? { scope: 'workspace', workspacePath: summary.workspacePath }
       : { scope: 'user' }
   )
+
+  const rowKey = (summary: SkillSummary): string => `${summary.scope}:${summary.workspacePath ?? ''}:${summary.name}`
+
+  const toggleExpanded = (key: string) => {
+    setExpanded((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   const openNew = () => {
     setFormError(null)
@@ -134,7 +164,7 @@ export function SkillManager({ t }: { t: Translate }) {
         content: body.content,
         originalName: body.name,
         originalTarget: target,
-        target,
+        targets: [target],
       })
     } catch (error) {
       setFormError(error instanceof Error ? error.message : t('error.load'))
@@ -151,6 +181,10 @@ export function SkillManager({ t }: { t: Translate }) {
       setFormError(t('field.description'))
       return
     }
+    if (draft.targets.length === 0) {
+      setFormError(t('import.noLocation'))
+      return
+    }
     setSaving(true)
     setFormError(null)
     try {
@@ -161,7 +195,7 @@ export function SkillManager({ t }: { t: Translate }) {
         modelInvocable: draft.modelInvocable,
         userInvocable: draft.userInvocable,
         content: draft.content,
-        target: draft.target,
+        targets: draft.targets,
         previousTarget: draft.originalTarget,
       }
       await fetchJson('/skill-manager/write', { method: 'POST', body: JSON.stringify(payload) })
@@ -196,21 +230,29 @@ export function SkillManager({ t }: { t: Translate }) {
       setImportError(t('import.noFile'))
       return
     }
+    if (importTargets.length === 0) {
+      setImportError(t('import.noLocation'))
+      return
+    }
     setImporting(true)
     setImportError(null)
     try {
       const bytes = new Uint8Array(await importFile.arrayBuffer())
-      const params = new URLSearchParams({ scope: importTarget.scope })
-      if (importTarget.workspacePath !== undefined) params.set('workspace', importTarget.workspacePath)
-      const result = await fetchJson<{ imported: string[] }>(`/skill-manager/import?${params.toString()}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/zip' },
-        body: bytes,
-      })
+      let total = 0
+      for (const target of importTargets) {
+        const params = new URLSearchParams({ scope: target.scope })
+        if (target.workspacePath !== undefined) params.set('workspace', target.workspacePath)
+        const result = await fetchJson<{ imported: string[] }>(`/skill-manager/import?${params.toString()}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/zip' },
+          body: bytes,
+        })
+        total += result.imported.length
+      }
       setImportOpen(false)
       setImportFile(null)
-      setImportTarget({ scope: 'user' })
-      setStatus(t('status.imported').replace('{n}', String(result.imported.length)))
+      setImportTargets([{ scope: 'user' }])
+      setStatus(t('status.imported').replace('{n}', String(total)))
       await load()
     } catch (error) {
       setImportError(error instanceof Error ? error.message : t('error.import'))
@@ -225,13 +267,13 @@ export function SkillManager({ t }: { t: Translate }) {
     setDraft((current) => (current === null ? current : { ...current, [key]: value }))
   }
 
-  const locationPills = (target: SkillTarget, onTarget: (next: SkillTarget) => void) => h(Fragment, null,
-    h(Pill, { active: target.scope === 'user', onClick: () => onTarget({ scope: 'user' }) }, t('location.user')),
+  const locationPills = (targets: readonly SkillTarget[], onTargets: (next: SkillTarget[]) => void) => h(Fragment, null,
+    h(Pill, { active: targets.some((target) => target.scope === 'user'), onClick: () => onTargets(toggleLocation(targets, { scope: 'user' })) }, t('location.user')),
     workspaces.length > 0 && h('span', { className: css.groupLabel }, t('location.workspaces')),
     workspaces.map((workspace) => h(Pill, {
       key: workspace.id,
-      active: target.scope === 'workspace' && target.workspacePath === workspace.path,
-      onClick: () => onTarget({ scope: 'workspace', workspacePath: workspace.path }),
+      active: targets.some((target) => target.scope === 'workspace' && target.workspacePath === workspace.path),
+      onClick: () => onTargets(toggleLocation(targets, { scope: 'workspace', workspacePath: workspace.path })),
     }, workspace.title)),
     workspaces.length === 0 && h('p', { className: css.muted }, t('location.empty')),
   )
@@ -258,6 +300,11 @@ export function SkillManager({ t }: { t: Translate }) {
 
       h('div', { className: css.toolbar },
         h(Input, { className: css.search, icon: h(IconSearchOutline16), placeholder: t('search.placeholder'), value: query, onChange: onQuery }),
+        h('div', { className: css.pillGroup },
+          h(Pill, { active: filter === 'all', onClick: () => setFilter('all') }, t('filter.all')),
+          h(Pill, { active: filter === 'user', onClick: () => setFilter('user') }, t('filter.user')),
+          h(Pill, { active: filter === 'workspace', onClick: () => setFilter('workspace') }, t('filter.workspace')),
+        ),
       ),
 
       loading
@@ -266,23 +313,28 @@ export function SkillManager({ t }: { t: Translate }) {
           ? h('p', { className: css.error }, `${t('error.load')}: ${loadError}`)
           : filtered.length === 0
             ? h('p', { className: css.muted }, t('list.empty'))
-            : h('ul', { className: css.list },
-                filtered.map((skill) => h('li', { className: css.row, key: `${skill.scope}:${skill.workspacePath ?? ''}:${skill.name}` },
-                  h(IconSkillOutline16, { className: css.rowIcon }),
-                  h('div', { className: css.rowMain },
-                    h('div', { className: css.rowTitle },
-                      h('span', { className: css.rowName }, skill.name),
-                      h('span', { className: css.scopeTag }, locationLabel(targetOf(skill))),
-                      skill.modelInvocable && h('span', { className: css.badge }, t('badge.model')),
-                      skill.userInvocable && h('span', { className: css.badge }, t('badge.user')),
-                    ),
-                    h('p', { className: css.rowDesc }, skill.description),
+            : h('div', { className: css.list },
+                filtered.map((skill) => h(DisclosureRow, {
+                  key: rowKey(skill),
+                  icon: h(IconSkillOutline16),
+                  title: skill.name,
+                  open: expanded.has(rowKey(skill)),
+                  expandable: true,
+                  expandOnRowClick: true,
+                  onToggle: () => toggleExpanded(rowKey(skill)),
+                  collapsedContent: h(Fragment, null,
+                    h(StateDot, { state: 'done', className: css.locationDot }),
+                    h('span', { className: css.scopeTag }, locationLabel(targetOf(skill))),
+                    skill.modelInvocable && h('span', { className: css.badge }, t('badge.model')),
+                    skill.userInvocable && h('span', { className: css.badge }, t('badge.user')),
                   ),
+                }, h('div', { className: css.rowDetail },
+                  h('p', { className: css.rowDesc }, skill.description),
                   h('div', { className: css.rowActions },
                     h(Button, { size: 'sm', icon: h(IconEditOutline16), onClick: () => { void openEdit(skill) } }, t('action.edit')),
                     h(Button, { size: 'sm', icon: h(IconTrashOutline16), onClick: () => setConfirmTarget(skill) }, t('action.delete')),
                   ),
-                )),
+                ))),
               ),
     ),
 
@@ -312,7 +364,7 @@ export function SkillManager({ t }: { t: Translate }) {
         ),
         h('div', { className: css.field },
           h('span', { className: css.label }, t('field.location')),
-          h('div', { className: css.pillGroup }, locationPills(draft.target, (next) => setDraftField('target', next))),
+          h('div', { className: css.pillGroup }, locationPills(draft.targets, (next) => setDraftField('targets', next))),
           h('span', { className: css.hint }, t('field.location.hint')),
         ),
         h('div', { className: css.field },
@@ -349,7 +401,7 @@ export function SkillManager({ t }: { t: Translate }) {
         ),
         h('div', { className: css.field },
           h('span', { className: css.label }, t('field.location')),
-          h('div', { className: css.pillGroup }, locationPills(importTarget, setImportTarget)),
+          h('div', { className: css.pillGroup }, locationPills(importTargets, setImportTargets)),
         ),
         importError !== null && h('p', { className: css.error }, importError),
       ),
