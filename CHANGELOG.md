@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-08-17
+
+### Changed
+
+- Install location is now single-select (global OR one workspace), and editing can move a skill to a new location.
+- Replaced native checkboxes with DSH-native `Pill` toggles for the invocation flags and the location selector.
+
+### Added
+
+- ZIP import now unwraps a zipped folder (a single shared wrapper directory), so a whole directory of skills imports in one go.
+
 ## [0.1.1] - 2026-08-17
 
 ### Changed

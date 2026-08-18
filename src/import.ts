@@ -6,9 +6,11 @@
  * - `<name>/SKILL.md`      → a directory bundle
  * - `<name>/<resource>`    → a nested resource, preserved under `<name>/`
  *
- * `name` must be kebab-case. Hidden entries (`.DS_Store`, `__MACOSX`, …) are
- * skipped. Entry paths are sanitized so no `..` or absolute path can escape
- * the target root.
+ * A zip of a *folder* (one shared wrapper directory with no `SKILL.md` of its
+ * own) is unwrapped automatically, so zipping a directory full of skills just
+ * works. `name` must be kebab-case; stray top-level docs (`README.md`,
+ * `LICENSE`, …) and hidden entries (`.DS_Store`, `__MACOSX`, …) are skipped.
+ * Entry paths are sanitized so no `..` or absolute path can escape the target.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -36,6 +38,12 @@ export function safeEntryParts(entryName: string): string[] | null {
   return parts
 }
 
+interface ZipFile {
+  readonly entryName: string
+  parts: string[]
+  readonly getData: () => Buffer
+}
+
 /** Extract a zip buffer into `targetRoot`, returning the imported skill names. */
 export function importSkillsFromZip(zipBytes: Buffer, targetRoot: string): ImportResult {
   let zip: AdmZip
@@ -45,7 +53,7 @@ export function importSkillsFromZip(zipBytes: Buffer, targetRoot: string): Impor
     throw new SkillError('not a valid zip archive')
   }
 
-  const imported = new Set<string>()
+  const files: ZipFile[] = []
   const skipped: string[] = []
 
   for (const entry of zip.getEntries()) {
@@ -59,24 +67,49 @@ export function importSkillsFromZip(zipBytes: Buffer, targetRoot: string): Impor
       skipped.push(entry.entryName)
       continue
     }
+    files.push({ entryName: entry.entryName, parts, getData: () => entry.getData() })
+  }
 
-    let name: string
-    let relative: string[]
+  // Unwrap a single shared wrapper directory (the "zip a folder" shape):
+  // every file shares one top-level segment, and that segment has no SKILL.md
+  // of its own — its children are the actual skills.
+  if (files.length > 0) {
+    const root = files[0].parts[0] as string
+    const allSameRoot = files.every((file) => file.parts[0] === root)
+    const rootIsSkill = files.some((file) => file.parts.length === 2 && file.parts[1] === 'SKILL.md')
+    if (allSameRoot && !rootIsSkill && files.every((file) => file.parts.length >= 2)) {
+      for (const file of files) file.parts = file.parts.slice(1)
+    }
+  }
+
+  const imported = new Set<string>()
+
+  for (const file of files) {
+    const parts = file.parts
+    if (parts.length === 0) continue
+    const first = parts[0] as string
+
     if (parts.length === 1 && first.endsWith('.md')) {
-      name = first.slice(0, -3)
-      relative = ['SKILL.md']
-    } else {
-      name = first
-      relative = parts.slice(1)
+      const flatName = first.slice(0, -3)
+      if (!SKILL_NAME_RE.test(flatName)) {
+        skipped.push(file.entryName)
+        continue
+      }
+      const destination = join(targetRoot, flatName, 'SKILL.md')
+      mkdirSync(dirname(destination), { recursive: true })
+      writeFileSync(destination, file.getData())
+      imported.add(flatName)
+      continue
     }
 
+    const name = first
     if (!SKILL_NAME_RE.test(name)) {
       throw new SkillError(`invalid skill name in zip: "${name}" (must be kebab-case)`)
     }
-
+    const relative = parts.slice(1)
     const destination = join(targetRoot, name, ...relative)
     mkdirSync(dirname(destination), { recursive: true })
-    writeFileSync(destination, entry.getData())
+    writeFileSync(destination, file.getData())
     imported.add(name)
   }
 

@@ -46,6 +46,32 @@ describe('importSkillsFromZip', () => {
     expect(existsSync(join(root, 'code-review', 'references', 'api.md'))).toBe(true)
   })
 
+  it('unwraps a zipped folder of skills', () => {
+    const result = importSkillsFromZip(zip({
+      'my-skills/code-review/SKILL.md': '---\nname: code-review\ndescription: d\n---\nbody',
+      'my-skills/writer/SKILL.md': '---\nname: writer\ndescription: d\n---\nbody',
+    }), root)
+    expect(result.imported.sort()).toEqual(['code-review', 'writer'])
+    expect(existsSync(join(root, 'code-review', 'SKILL.md'))).toBe(true)
+    expect(existsSync(join(root, 'my-skills'))).toBe(false)
+  })
+
+  it('unwraps a zipped folder containing a single skill', () => {
+    const result = importSkillsFromZip(zip({
+      'my-skills/code-review/SKILL.md': '---\nname: code-review\ndescription: d\n---\nbody',
+    }), root)
+    expect(result.imported).toEqual(['code-review'])
+  })
+
+  it('skips stray top-level docs inside a wrapper', () => {
+    const result = importSkillsFromZip(zip({
+      'my-skills/README.md': '# docs',
+      'my-skills/code-review/SKILL.md': '---\nname: code-review\ndescription: d\n---\nbody',
+    }), root)
+    expect(result.imported).toEqual(['code-review'])
+    expect(existsSync(join(root, 'README'))).toBe(false)
+  })
+
   it('rejects path traversal and absolute paths', () => {
     expect(safeEntryParts('../evil/SKILL.md')).toBeNull()
     expect(safeEntryParts('a/../../evil')).toBeNull()

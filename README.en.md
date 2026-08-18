@@ -16,8 +16,8 @@ Graphical **skill manager** for [DeepSeek Harness](https://github.com/deepseek-a
 - **Create** a new skill through a form: name (kebab-case), description, optional `whenToUse`, install location, model/user invocation toggles, and the Markdown instruction body.
 - **Edit** an existing skill (the name is immutable while editing — rename by recreating).
 - **Delete** with a confirmation step.
-- **Import a ZIP** of skills (`<name>/SKILL.md` or `<name>.md`, plus nested resources) into one or more locations.
-- **Global + workspaces**: install to the machine-global root (`$DSH_HOME/skills`) and/or tick any of the workspaces the harness already tracks (`<workspace>/.dsh/skills`) — the same roots the built-in `skill-filesystem` provider scans, so anything you write is picked up without a restart.
+- **Import a ZIP** of skills (`<name>/SKILL.md` or `<name>.md`, plus nested resources) into global or one workspace — a zipped folder works too.
+- **Global or one workspace**: install to the machine-global root (`$DSH_HOME/skills`) or a single workspace (`<workspace>/.dsh/skills`), and move a skill to a new location any time by editing it — the same roots the built-in `skill-filesystem` provider scans, so anything you write is picked up without a restart.
 - Bilingual (中文 / English) and theme-aware, rendered with the native DSH UI primitives.
 
 ## Install

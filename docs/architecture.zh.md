@@ -44,9 +44,9 @@
 | `GET` | `/skill-manager/list` | — | 返回全局根与每个工作区根合并的 `{ skills: SkillSummary[] }`。 |
 | `GET` | `/skill-manager/workspaces` | — | 从 `workspaceRegistry.list()` 返回 `{ workspaces: WorkspaceInfo[] }`。 |
 | `GET` | `/skill-manager/read` | `?name=&scope=&workspace=` | 返回单个 `SkillBody`（frontmatter + 正文），或 `404`。 |
-| `POST` | `/skill-manager/write` | `SkillWriteRequest`（含 `targets[]`） | 在每一个 target 新建或更新技能，返回新的 summaries。 |
+| `POST` | `/skill-manager/write` | `SkillWriteRequest`（单个 `target`，可选 `previousTarget`） | 在单个 target 新建或更新技能；`previousTarget` 不同则移动。 |
 | `POST` | `/skill-manager/remove` | `{ name, target }` | 从单个 target 删除技能，返回 `{ removed }`。 |
-| `POST` | `/skill-manager/import` | `?scope=&workspace=` + ZIP 字节 | 把 zip 解压进单个 target，返回 `{ imported }`。 |
+| `POST` | `/skill-manager/import` | `?scope=&workspace=` + ZIP 字节 | 把 zip 解压进单个 target；单个共享的包裹目录会被自动剥掉；返回 `{ imported }`。 |
 
 target 为 `{ scope: 'user' }` 或 `{ scope: 'workspace', workspacePath }`。类型统一定义在 `src/types.ts`，两端共享（客户端会内联进自己的 bundle）。
 

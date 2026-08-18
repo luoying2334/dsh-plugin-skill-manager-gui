@@ -56,8 +56,10 @@ export interface SkillWriteRequest {
   readonly modelInvocable: boolean
   readonly userInvocable: boolean
   readonly content: string
-  /** One or more install locations (global root and/or workspace roots). */
-  readonly targets: readonly SkillTarget[]
+  /** The single install location (global root or one workspace). */
+  readonly target: SkillTarget
+  /** When editing, the skill's previous location — a different value moves it. */
+  readonly previousTarget?: SkillTarget
 }
 
 /** Payload for `POST /skill-manager/remove`. */

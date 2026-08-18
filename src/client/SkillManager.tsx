@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { createElement as h, Fragment } from 'react'
 import {
-  Button, Input, Modal,
+  Button, Input, Modal, Pill,
   IconPlusOutline16, IconEditOutline16, IconTrashOutline16, IconSkillOutline16, IconSearchOutline16, IconDownloadOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
@@ -23,10 +23,10 @@ interface SkillDraft {
   userInvocable: boolean
   content: string
   originalName?: string
-  /** Fixed location when editing; undefined when creating. */
+  /** Previous location when editing; a different `target` on save moves the skill. */
   originalTarget?: SkillTarget
-  useUser: boolean
-  workspacePaths: string[]
+  /** The single install location. */
+  target: SkillTarget
 }
 
 const EMPTY_DRAFT: SkillDraft = {
@@ -36,8 +36,7 @@ const EMPTY_DRAFT: SkillDraft = {
   modelInvocable: true,
   userInvocable: true,
   content: '',
-  useUser: true,
-  workspacePaths: [],
+  target: { scope: 'user' },
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -71,8 +70,7 @@ export function SkillManager({ t }: { t: Translate }) {
   // ZIP import state
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
-  const [importUseUser, setImportUseUser] = useState(true)
-  const [importWorkspacePaths, setImportWorkspacePaths] = useState<string[]>([])
+  const [importTarget, setImportTarget] = useState<SkillTarget>({ scope: 'user' })
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
 
@@ -109,6 +107,12 @@ export function SkillManager({ t }: { t: Translate }) {
     return workspace?.title ?? basenameOf(target.workspacePath)
   }, [workspaces, t])
 
+  const targetOf = (summary: SkillSummary): SkillTarget => (
+    summary.scope === 'workspace'
+      ? { scope: 'workspace', workspacePath: summary.workspacePath }
+      : { scope: 'user' }
+  )
+
   const openNew = () => {
     setFormError(null)
     setDraft({ ...EMPTY_DRAFT })
@@ -116,9 +120,7 @@ export function SkillManager({ t }: { t: Translate }) {
 
   const openEdit = async (summary: SkillSummary) => {
     setFormError(null)
-    const target: SkillTarget = summary.scope === 'workspace'
-      ? { scope: 'workspace', workspacePath: summary.workspacePath }
-      : { scope: 'user' }
+    const target = targetOf(summary)
     const params = new URLSearchParams({ name: summary.name, scope: summary.scope })
     if (summary.workspacePath !== undefined) params.set('workspace', summary.workspacePath)
     try {
@@ -132,8 +134,7 @@ export function SkillManager({ t }: { t: Translate }) {
         content: body.content,
         originalName: body.name,
         originalTarget: target,
-        useUser: summary.scope === 'user',
-        workspacePaths: summary.scope === 'workspace' && summary.workspacePath !== undefined ? [summary.workspacePath] : [],
+        target,
       })
     } catch (error) {
       setFormError(error instanceof Error ? error.message : t('error.load'))
@@ -150,16 +151,6 @@ export function SkillManager({ t }: { t: Translate }) {
       setFormError(t('field.description'))
       return
     }
-    const targets: SkillTarget[] = draft.originalTarget !== undefined
-      ? [draft.originalTarget]
-      : [
-          ...(draft.useUser ? [{ scope: 'user' as const }] : []),
-          ...draft.workspacePaths.map((path) => ({ scope: 'workspace' as const, workspacePath: path })),
-        ]
-    if (targets.length === 0) {
-      setFormError(t('import.noLocation'))
-      return
-    }
     setSaving(true)
     setFormError(null)
     try {
@@ -170,7 +161,8 @@ export function SkillManager({ t }: { t: Translate }) {
         modelInvocable: draft.modelInvocable,
         userInvocable: draft.userInvocable,
         content: draft.content,
-        targets,
+        target: draft.target,
+        previousTarget: draft.originalTarget,
       }
       await fetchJson('/skill-manager/write', { method: 'POST', body: JSON.stringify(payload) })
       setDraft(null)
@@ -185,13 +177,10 @@ export function SkillManager({ t }: { t: Translate }) {
 
   const confirmRemove = async () => {
     if (confirmTarget === null) return
-    const target: SkillTarget = confirmTarget.scope === 'workspace'
-      ? { scope: 'workspace', workspacePath: confirmTarget.workspacePath }
-      : { scope: 'user' }
     try {
       await fetchJson('/skill-manager/remove', {
         method: 'POST',
-        body: JSON.stringify({ name: confirmTarget.name, target }),
+        body: JSON.stringify({ name: confirmTarget.name, target: targetOf(confirmTarget) }),
       })
       setConfirmTarget(null)
       setStatus(t('status.deleted'))
@@ -207,32 +196,21 @@ export function SkillManager({ t }: { t: Translate }) {
       setImportError(t('import.noFile'))
       return
     }
-    const targets: SkillTarget[] = [
-      ...(importUseUser ? [{ scope: 'user' as const }] : []),
-      ...importWorkspacePaths.map((path) => ({ scope: 'workspace' as const, workspacePath: path })),
-    ]
-    if (targets.length === 0) {
-      setImportError(t('import.noLocation'))
-      return
-    }
     setImporting(true)
     setImportError(null)
     try {
       const bytes = new Uint8Array(await importFile.arrayBuffer())
-      let total = 0
-      for (const target of targets) {
-        const params = new URLSearchParams({ scope: target.scope })
-        if (target.workspacePath !== undefined) params.set('workspace', target.workspacePath)
-        const result = await fetchJson<{ imported: string[] }>(`/skill-manager/import?${params.toString()}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/zip' },
-          body: bytes,
-        })
-        total += result.imported.length
-      }
+      const params = new URLSearchParams({ scope: importTarget.scope })
+      if (importTarget.workspacePath !== undefined) params.set('workspace', importTarget.workspacePath)
+      const result = await fetchJson<{ imported: string[] }>(`/skill-manager/import?${params.toString()}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/zip' },
+        body: bytes,
+      })
       setImportOpen(false)
       setImportFile(null)
-      setStatus(t('status.imported').replace('{n}', String(total)))
+      setImportTarget({ scope: 'user' })
+      setStatus(t('status.imported').replace('{n}', String(result.imported.length)))
       await load()
     } catch (error) {
       setImportError(error instanceof Error ? error.message : t('error.import'))
@@ -247,28 +225,20 @@ export function SkillManager({ t }: { t: Translate }) {
     setDraft((current) => (current === null ? current : { ...current, [key]: value }))
   }
 
-  const toggleWorkspacePath = (paths: string[], path: string): string[] => (
-    paths.includes(path) ? paths.filter((entry) => entry !== path) : [...paths, path]
+  const locationPills = (target: SkillTarget, onTarget: (next: SkillTarget) => void) => h(Fragment, null,
+    h(Pill, { active: target.scope === 'user', onClick: () => onTarget({ scope: 'user' }) }, t('location.user')),
+    workspaces.length > 0 && h('span', { className: css.groupLabel }, t('location.workspaces')),
+    workspaces.map((workspace) => h(Pill, {
+      key: workspace.id,
+      active: target.scope === 'workspace' && target.workspacePath === workspace.path,
+      onClick: () => onTarget({ scope: 'workspace', workspacePath: workspace.path }),
+    }, workspace.title)),
+    workspaces.length === 0 && h('p', { className: css.muted }, t('location.empty')),
   )
 
-  const locationCheckboxes = (
-    useUser: boolean,
-    workspacePaths: string[],
-    onUser: (value: boolean) => void,
-    onWorkspace: (paths: string[]) => void,
-  ) => h(Fragment, null,
-    h('label', { className: css.check },
-      h('input', { type: 'checkbox', checked: useUser, onChange: (event: ChangeEvent<HTMLInputElement>) => onUser(event.target.checked) }),
-      h('span', null, t('location.user')),
-    ),
-    h('span', { className: css.groupLabel }, t('location.workspaces')),
-    workspaces.length === 0
-      ? h('p', { className: css.muted }, t('location.empty'))
-      : workspaces.map((workspace) => h('label', { className: css.check, key: workspace.id },
-          h('input', { type: 'checkbox', checked: workspacePaths.includes(workspace.path), onChange: (event: ChangeEvent<HTMLInputElement>) => onWorkspace(toggleWorkspacePath(workspacePaths, workspace.path)) }),
-          h('span', null, workspace.title),
-          h('span', { className: css.workspacePath }, workspace.path),
-        )),
+  const flagToggles = (modelInvocable: boolean, userInvocable: boolean, onModel: (v: boolean) => void, onUser: (v: boolean) => void) => h('div', { className: css.pillGroup },
+    h(Pill, { active: modelInvocable, onClick: () => onModel(!modelInvocable) }, t('field.modelInvocable')),
+    h(Pill, { active: userInvocable, onClick: () => onUser(!userInvocable) }, t('field.userInvocable')),
   )
 
   return h(Fragment, null,
@@ -297,27 +267,22 @@ export function SkillManager({ t }: { t: Translate }) {
           : filtered.length === 0
             ? h('p', { className: css.muted }, t('list.empty'))
             : h('ul', { className: css.list },
-                filtered.map((skill) => {
-                  const target: SkillTarget = skill.scope === 'workspace'
-                    ? { scope: 'workspace', workspacePath: skill.workspacePath }
-                    : { scope: 'user' }
-                  return h('li', { className: css.row, key: `${skill.scope}:${skill.workspacePath ?? ''}:${skill.name}` },
-                    h(IconSkillOutline16, { className: css.rowIcon }),
-                    h('div', { className: css.rowMain },
-                      h('div', { className: css.rowTitle },
-                        h('span', { className: css.rowName }, skill.name),
-                        h('span', { className: css.scopeTag }, locationLabel(target)),
-                        skill.modelInvocable && h('span', { className: css.badge }, t('badge.model')),
-                        skill.userInvocable && h('span', { className: css.badge }, t('badge.user')),
-                      ),
-                      h('p', { className: css.rowDesc }, skill.description),
+                filtered.map((skill) => h('li', { className: css.row, key: `${skill.scope}:${skill.workspacePath ?? ''}:${skill.name}` },
+                  h(IconSkillOutline16, { className: css.rowIcon }),
+                  h('div', { className: css.rowMain },
+                    h('div', { className: css.rowTitle },
+                      h('span', { className: css.rowName }, skill.name),
+                      h('span', { className: css.scopeTag }, locationLabel(targetOf(skill))),
+                      skill.modelInvocable && h('span', { className: css.badge }, t('badge.model')),
+                      skill.userInvocable && h('span', { className: css.badge }, t('badge.user')),
                     ),
-                    h('div', { className: css.rowActions },
-                      h(Button, { size: 'sm', icon: h(IconEditOutline16), onClick: () => { void openEdit(skill) } }, t('action.edit')),
-                      h(Button, { size: 'sm', icon: h(IconTrashOutline16), onClick: () => setConfirmTarget(skill) }, t('action.delete')),
-                    ),
-                  )
-                }),
+                    h('p', { className: css.rowDesc }, skill.description),
+                  ),
+                  h('div', { className: css.rowActions },
+                    h(Button, { size: 'sm', icon: h(IconEditOutline16), onClick: () => { void openEdit(skill) } }, t('action.edit')),
+                    h(Button, { size: 'sm', icon: h(IconTrashOutline16), onClick: () => setConfirmTarget(skill) }, t('action.delete')),
+                  ),
+                )),
               ),
     ),
 
@@ -347,24 +312,16 @@ export function SkillManager({ t }: { t: Translate }) {
         ),
         h('div', { className: css.field },
           h('span', { className: css.label }, t('field.location')),
-          draft.originalTarget !== undefined
-            ? h('p', { className: css.muted }, locationLabel(draft.originalTarget))
-            : locationCheckboxes(
-                draft.useUser,
-                draft.workspacePaths,
-                (value) => setDraftField('useUser', value),
-                (paths) => setDraftField('workspacePaths', paths),
-              ),
+          h('div', { className: css.pillGroup }, locationPills(draft.target, (next) => setDraftField('target', next))),
           h('span', { className: css.hint }, t('field.location.hint')),
         ),
-        h('div', { className: css.fieldRow },
-          h('label', { className: css.check },
-            h('input', { type: 'checkbox', checked: draft.modelInvocable, onChange: (event: ChangeEvent<HTMLInputElement>) => setDraftField('modelInvocable', event.target.checked) }),
-            h('span', null, t('field.modelInvocable')),
-          ),
-          h('label', { className: css.check },
-            h('input', { type: 'checkbox', checked: draft.userInvocable, onChange: (event: ChangeEvent<HTMLInputElement>) => setDraftField('userInvocable', event.target.checked) }),
-            h('span', null, t('field.userInvocable')),
+        h('div', { className: css.field },
+          h('span', { className: css.label }, t('field.modelInvocable')),
+          flagToggles(
+            draft.modelInvocable,
+            draft.userInvocable,
+            (value) => setDraftField('modelInvocable', value),
+            (value) => setDraftField('userInvocable', value),
           ),
         ),
         h('label', { className: css.field },
@@ -392,7 +349,7 @@ export function SkillManager({ t }: { t: Translate }) {
         ),
         h('div', { className: css.field },
           h('span', { className: css.label }, t('field.location')),
-          locationCheckboxes(importUseUser, importWorkspacePaths, setImportUseUser, setImportWorkspacePaths),
+          h('div', { className: css.pillGroup }, locationPills(importTarget, setImportTarget)),
         ),
         importError !== null && h('p', { className: css.error }, importError),
       ),
