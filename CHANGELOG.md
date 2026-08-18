@@ -7,11 +7,15 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - Global / workspace scope filter for the skill list.
-- Catalog-style list (disclosure cards with status dot and scope tag), matching the Plugins → Plugin list look.
+- Two-column card-grid catalog (search + count + status dot + scope tag + chevron), matching the Plugins → Plugin list look.
 
 ### Changed
 
 - Install location now allows multiple workspaces (global stays exclusive with workspaces).
+
+### Fixed
+
+- Multi-workspace installs no longer show the same skill once per workspace — skills are grouped by name with a merged location list.
 
 ## [0.1.2] - 2026-08-17
 

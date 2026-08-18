@@ -41,11 +41,11 @@ All routes live under the `/skill-manager` prefix. Requests and responses are JS
 
 | Method | Path | Body / query | Effect |
 |---|---|---|---|
-| `GET` | `/skill-manager/list` | — | Returns `{ skills: SkillSummary[] }` across the global root and every workspace root. |
+| `GET` | `/skill-manager/list` | — | Returns `{ skills: SkillSummary[] }` — one entry per skill name (grouped across roots), each with a merged `locations[]`. |
 | `GET` | `/skill-manager/workspaces` | — | Returns `{ workspaces: WorkspaceInfo[] }` from `workspaceRegistry.list()`. |
 | `GET` | `/skill-manager/read` | `?name=&scope=&workspace=` | Returns one `SkillBody` (frontmatter + body), or `404`. |
-| `POST` | `/skill-manager/write` | `SkillWriteRequest` (single `target`, optional `previousTarget`) | Creates or updates a skill in one target; a different `previousTarget` moves it. |
-| `POST` | `/skill-manager/remove` | `{ name, target }` | Deletes a skill from one target; returns `{ removed }`. |
+| `POST` | `/skill-manager/write` | `SkillWriteRequest` (`targets[]`, optional `previousTargets[]`) | Creates or updates a skill in every target; any `previousTargets` no longer targeted are removed (move). |
+| `POST` | `/skill-manager/remove` | `{ name, targets[] }` | Deletes a skill from each target; returns `{ removed }`. |
 | `POST` | `/skill-manager/import` | `?scope=&workspace=` + ZIP body | Extracts the zip into one target; a single shared wrapper folder is unwrapped; returns `{ imported }`. |
 
 A `target` is `{ scope: 'user' }` or `{ scope: 'workspace', workspacePath }`. Types are defined once in `src/types.ts` and shared by both sides (the client inlines them into its bundle).
