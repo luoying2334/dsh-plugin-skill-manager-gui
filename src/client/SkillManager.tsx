@@ -25,8 +25,8 @@ interface SkillDraft {
   userInvocable: boolean
   content: string
   originalName?: string
-  /** Previous location of the instance being edited; removed when not re-targeted. */
-  originalTarget?: SkillTarget
+  /** Previous locations of the skill being edited; any not re-targeted are removed. */
+  originalTargets?: SkillTarget[]
   /** Install locations (global, or one or more workspaces — never mixed). */
   targets: SkillTarget[]
 }
@@ -111,8 +111,10 @@ export function SkillManager({ t }: { t: Translate }) {
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
     return skills.filter((skill) => {
-      if (filter === 'user' && skill.scope !== 'user') return false
-      if (filter === 'workspace' && skill.scope !== 'workspace') return false
+      const hasUser = skill.locations.some((location) => location.scope === 'user')
+      const hasWorkspace = skill.locations.some((location) => location.scope === 'workspace')
+      if (filter === 'user' && !hasUser) return false
+      if (filter === 'workspace' && !hasWorkspace) return false
       if (needle !== '') {
         return skill.name.toLowerCase().includes(needle) || skill.description.toLowerCase().includes(needle)
       }
@@ -126,13 +128,21 @@ export function SkillManager({ t }: { t: Translate }) {
     return workspace?.title ?? basenameOf(target.workspacePath)
   }, [workspaces, t])
 
-  const targetOf = (summary: SkillSummary): SkillTarget => (
-    summary.scope === 'workspace'
-      ? { scope: 'workspace', workspacePath: summary.workspacePath }
-      : { scope: 'user' }
-  )
+  const locationsText = useCallback((locations: readonly SkillTarget[]): string => (
+    locations.map((location) => locationLabel(location)).join(', ')
+  ), [locationLabel])
 
-  const rowKey = (summary: SkillSummary): string => `${summary.scope}:${summary.workspacePath ?? ''}:${summary.name}`
+  const locationsLabel = useCallback((locations: readonly SkillTarget[]): string => {
+    if (locations.length === 1) return locationLabel(locations[0])
+    if (locations.length <= 2) return locations.map((location) => locationLabel(location)).join(' + ')
+    return `${locations.length} ${t('filter.workspace')}`
+  }, [locationLabel, t])
+
+  const readUrl = (name: string, target: SkillTarget): string => {
+    const params = new URLSearchParams({ name, scope: target.scope })
+    if (target.workspacePath !== undefined) params.set('workspace', target.workspacePath)
+    return `/skill-manager/read?${params.toString()}`
+  }
 
   const openNew = () => {
     setFormError(null)
@@ -141,11 +151,9 @@ export function SkillManager({ t }: { t: Translate }) {
 
   const openEdit = async (summary: SkillSummary) => {
     setFormError(null)
-    const target = targetOf(summary)
-    const params = new URLSearchParams({ name: summary.name, scope: summary.scope })
-    if (summary.workspacePath !== undefined) params.set('workspace', summary.workspacePath)
+    const first = summary.locations[0] ?? { scope: 'user' as const }
     try {
-      const body = await fetchJson<SkillBody>(`/skill-manager/read?${params.toString()}`)
+      const body = await fetchJson<SkillBody>(readUrl(summary.name, first))
       setDraft({
         name: body.name,
         description: body.description,
@@ -154,8 +162,8 @@ export function SkillManager({ t }: { t: Translate }) {
         userInvocable: body.userInvocable,
         content: body.content,
         originalName: body.name,
-        originalTarget: target,
-        targets: [target],
+        originalTargets: summary.locations,
+        targets: [...summary.locations],
       })
     } catch (error) {
       setFormError(error instanceof Error ? error.message : t('error.load'))
@@ -187,7 +195,7 @@ export function SkillManager({ t }: { t: Translate }) {
         userInvocable: draft.userInvocable,
         content: draft.content,
         targets: draft.targets,
-        previousTarget: draft.originalTarget,
+        previousTargets: draft.originalTargets,
       }
       await fetchJson('/skill-manager/write', { method: 'POST', body: JSON.stringify(payload) })
       setDraft(null)
@@ -205,7 +213,7 @@ export function SkillManager({ t }: { t: Translate }) {
     try {
       await fetchJson('/skill-manager/remove', {
         method: 'POST',
-        body: JSON.stringify({ name: confirmTarget.name, target: targetOf(confirmTarget) }),
+        body: JSON.stringify({ name: confirmTarget.name, targets: confirmTarget.locations }),
       })
       setConfirmTarget(null)
       setStatus(t('status.deleted'))
@@ -312,19 +320,19 @@ export function SkillManager({ t }: { t: Translate }) {
               ? h('p', { className: css.statusText }, t('list.empty'))
               : h('ul', { className: css.cards },
                   filtered.map((skill) => {
-                    const open = expandedKey === rowKey(skill)
-                    const location = locationLabel(targetOf(skill))
-                    return h('li', { className: css.card, key: rowKey(skill), 'data-open': open ? 'true' : undefined },
+                    const open = expandedKey === skill.name
+                    const firstScope = skill.locations[0]?.scope ?? 'user'
+                    return h('li', { className: css.card, key: skill.name, 'data-open': open ? 'true' : undefined },
                       h('button', {
                         className: css.cardContent,
                         type: 'button',
                         'aria-expanded': open,
-                        onClick: () => setExpandedKey(open ? null : rowKey(skill)),
+                        onClick: () => setExpandedKey(open ? null : skill.name),
                       },
                         h('strong', { className: css.cardTitle, title: skill.name }, skill.name),
                         h('span', { className: css.cardTrailing },
-                          h('span', { className: css.statusDot, 'data-scope': skill.scope, role: 'img', 'aria-label': location, title: location }),
-                          h('span', { className: css.configTag, 'data-enabled': skill.scope === 'user' ? 'true' : 'false' }, location),
+                          h('span', { className: css.statusDot, 'data-scope': firstScope, role: 'img', 'aria-label': locationsLabel(skill.locations), title: locationsText(skill.locations) }),
+                          h('span', { className: css.configTag, 'data-enabled': firstScope === 'user' ? 'true' : 'false' }, locationsLabel(skill.locations)),
                           h(IconChevronDownOutline14, { className: css.chevron, size: 12 }),
                         ),
                       ),
@@ -333,7 +341,7 @@ export function SkillManager({ t }: { t: Translate }) {
                         h('dl', { className: css.details },
                           h('div', null,
                             h('dt', null, t('field.location')),
-                            h('dd', null, location),
+                            h('dd', null, locationsText(skill.locations)),
                           ),
                           h('div', null,
                             h('dt', null, t('field.modelInvocable')),

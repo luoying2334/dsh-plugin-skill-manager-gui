@@ -48,8 +48,8 @@ describe('SkillStore', () => {
   it('writes into a workspace root and tags the summary with scope + path', () => {
     store.write(workspaceRoot, 'workspace', join(dir, 'workspace'), request())
     const skill = store.read(workspaceRoot, 'workspace', join(dir, 'workspace'), 'code-review')
-    expect(skill?.scope).toBe('workspace')
-    expect(skill?.workspacePath).toBe(join(dir, 'workspace'))
+    expect(skill?.target.scope).toBe('workspace')
+    expect(skill?.target.workspacePath).toBe(join(dir, 'workspace'))
   })
 
   it('round-trips invocation flags through frontmatter', () => {

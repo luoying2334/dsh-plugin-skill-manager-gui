@@ -13,11 +13,12 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { basename } from 'node:path'
 import { assertLocalMutation, readBody, readJsonBody, sendJson } from './http.ts'
 import { importSkillsFromZip } from './import.ts'
-import { SkillError, SkillStore } from './skills.ts'
+import { SkillError, SkillStore, type SkillEntry } from './skills.ts'
 import type {
   SkillImportResponse,
   SkillListResponse,
   SkillRemoveRequest,
+  SkillSummary,
   SkillTarget,
   SkillWorkspacesResponse,
   SkillWriteRequest,
@@ -94,10 +95,10 @@ export function mountSkillRoutes(host: SkillManagerHost, config: SkillManagerCon
       const sub = url.pathname.slice(PREFIX.length) || '/'
       try {
         if (request.method === 'GET' && sub === '/list') {
-          const skills = resolveRoots().flatMap((entry) => (
+          const entries = resolveRoots().flatMap((entry) => (
             store.list(entry.root, entry.target.scope, entry.target.workspacePath)
           ))
-          const body: SkillListResponse = { skills }
+          const body: SkillListResponse = { skills: groupBy(entries) }
           sendJson(response, 200, body)
           return
         }
@@ -134,15 +135,19 @@ export function mountSkillRoutes(host: SkillManagerHost, config: SkillManagerCon
           }
           const payload = (await readJsonBody(request)) as SkillWriteRequest
           validateTargets(payload.targets)
-          if (payload.previousTarget !== undefined) validateTarget(payload.previousTarget)
+          if (payload.previousTargets !== undefined) validateTargets(payload.previousTargets)
           const summaries = payload.targets.map((target) => {
             const entry = resolveTarget(target)
             return store.write(entry.root, entry.target.scope, entry.target.workspacePath, payload)
           })
-          // Move: when the edited instance's previous location is no longer a target, remove it.
-          if (payload.previousTarget !== undefined && !payload.targets.some((target) => sameTarget(target, payload.previousTarget as SkillTarget))) {
-            const previous = resolveTarget(payload.previousTarget)
-            store.remove(previous.root, payload.name)
+          // Move: remove any previous location that is no longer a target.
+          if (payload.previousTargets !== undefined) {
+            for (const previous of payload.previousTargets) {
+              if (!payload.targets.some((target) => sameTarget(target, previous))) {
+                const entry = resolveTarget(previous)
+                store.remove(entry.root, payload.name)
+              }
+            }
           }
           sendJson(response, 200, { summaries })
           return
@@ -155,9 +160,12 @@ export function mountSkillRoutes(host: SkillManagerHost, config: SkillManagerCon
             return
           }
           const payload = (await readJsonBody(request)) as SkillRemoveRequest
-          validateTarget(payload.target)
-          const entry = resolveTarget(payload.target)
-          const removed = store.remove(entry.root, payload.name)
+          validateTargets(payload.targets)
+          let removed = false
+          for (const target of payload.targets) {
+            const entry = resolveTarget(target)
+            removed = store.remove(entry.root, payload.name) || removed
+          }
           sendJson(response, 200, { removed })
           return
         }
@@ -216,4 +224,44 @@ function sameTarget(left: SkillTarget, right: SkillTarget): boolean {
   if (left.scope !== right.scope) return false
   if (left.scope === 'workspace') return left.workspacePath === right.workspacePath
   return true
+}
+
+function sortLocations(locations: readonly SkillTarget[]): SkillTarget[] {
+  return [...locations].sort((a, b) => {
+    if (a.scope === 'user') return -1
+    if (b.scope === 'user') return 1
+    return (a.workspacePath ?? '').localeCompare(b.workspacePath ?? '')
+  })
+}
+
+/** Merge per-root entries into one summary per skill name. */
+function groupBy(entries: readonly SkillEntry[]): SkillSummary[] {
+  const map = new Map<string, {
+    name: string
+    description: string
+    whenToUse?: string
+    modelInvocable: boolean
+    userInvocable: boolean
+    locations: SkillTarget[]
+    path: string
+  }>()
+  for (const entry of entries) {
+    const existing = map.get(entry.name)
+    if (existing === undefined) {
+      map.set(entry.name, {
+        name: entry.name,
+        description: entry.description,
+        whenToUse: entry.whenToUse,
+        modelInvocable: entry.modelInvocable,
+        userInvocable: entry.userInvocable,
+        locations: [entry.target],
+        path: entry.path,
+      })
+    } else {
+      existing.locations.push(entry.target)
+    }
+  }
+  return [...map.values()]
+    .map((summary) => ({ ...summary, locations: sortLocations(summary.locations) }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 }

@@ -7,17 +7,31 @@
  *
  * Skills are written as directory bundles `<root>/<name>/SKILL.md`. Foreign
  * flat files `<root>/<name>.md` are listed read-only but are never written.
+ *
+ * This service works one root at a time; the routes layer groups per-root
+ * entries by name into the client-facing `SkillSummary`.
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { dump, load } from 'js-yaml'
-import { SKILL_NAME_RE, type SkillBody, type SkillScope, type SkillSummary, type SkillTarget, type SkillWriteRequest } from './types.ts'
+import { SKILL_NAME_RE, type SkillBody, type SkillScope, type SkillTarget, type SkillWriteRequest } from './types.ts'
 
 export interface SkillStoreConfig {
   /** Absolute directory for the machine-global skill root (default `$DSH_HOME/skills`). */
   userSkillsDir?: string
+}
+
+/** One skill file entry under a single root. */
+export interface SkillEntry {
+  readonly name: string
+  readonly description: string
+  readonly whenToUse?: string
+  readonly modelInvocable: boolean
+  readonly userInvocable: boolean
+  readonly target: SkillTarget
+  readonly path: string
 }
 
 interface ParsedFrontmatter {
@@ -89,25 +103,25 @@ export class SkillStore {
     throw new SkillError(`invalid scope: ${String(target.scope)}`)
   }
 
-  /** Summaries under one root, sorted by name. */
-  list(root: string, scope: SkillScope, workspacePath?: string): SkillSummary[] {
+  /** Per-root entries under one root, sorted by name. */
+  list(root: string, scope: SkillScope, workspacePath?: string): SkillEntry[] {
     if (!existsSync(root)) return []
-    const summaries: SkillSummary[] = []
+    const entries: SkillEntry[] = []
     for (const entry of readdirSync(root, { withFileTypes: true })) {
       const absolute = join(root, entry.name)
       if (entry.isDirectory()) {
         const skillFile = join(absolute, 'SKILL.md')
         if (!existsSync(skillFile)) continue
-        const summary = this.summaryFrom(scope, workspacePath, skillFile, entry.name, readFileSync(skillFile, 'utf8'))
-        if (summary !== null) summaries.push(summary)
+        const summary = this.entryFrom(scope, workspacePath, skillFile, entry.name, readFileSync(skillFile, 'utf8'))
+        if (summary !== null) entries.push(summary)
       } else if (entry.isFile() && entry.name.endsWith('.md')) {
         const name = entry.name.slice(0, -3)
-        const summary = this.summaryFrom(scope, workspacePath, absolute, name, readFileSync(absolute, 'utf8'))
-        if (summary !== null) summaries.push(summary)
+        const summary = this.entryFrom(scope, workspacePath, absolute, name, readFileSync(absolute, 'utf8'))
+        if (summary !== null) entries.push(summary)
       }
     }
-    summaries.sort((a, b) => a.name.localeCompare(b.name))
-    return summaries
+    entries.sort((a, b) => a.name.localeCompare(b.name))
+    return entries
   }
 
   /** Read one skill's full body under a root, or null when absent. */
@@ -119,19 +133,18 @@ export class SkillStore {
     const parsed = this.parseFrontmatter(frontmatter, name)
     return {
       name,
-      scope,
-      workspacePath,
       description: parsed.description ?? found.description,
       whenToUse: parsed.whenToUse,
       modelInvocable: parsed.disableModelInvocation !== true,
       userInvocable: parsed.userInvocable !== false,
-      path: dirname(found.path),
       content: body,
+      target: { scope, workspacePath },
+      path: dirname(found.path),
     }
   }
 
-  /** Create or update a skill under one root, returning its new summary. */
-  write(root: string, scope: SkillScope, workspacePath: string | undefined, request: SkillWriteRequest): SkillSummary {
+  /** Create or update a skill under one root, returning its entry. */
+  write(root: string, scope: SkillScope, workspacePath: string | undefined, request: SkillWriteRequest): SkillEntry {
     this.assertName(request.name)
     if (request.description.trim() === '') throw new SkillError('description is required')
     const bundleDir = join(root, request.name)
@@ -162,8 +175,7 @@ export class SkillStore {
       whenToUse: request.whenToUse?.trim() || undefined,
       modelInvocable: request.modelInvocable,
       userInvocable: request.userInvocable,
-      scope,
-      workspacePath,
+      target: { scope, workspacePath },
       path: bundleDir,
     }
   }
@@ -198,7 +210,7 @@ export class SkillStore {
     return null
   }
 
-  private summaryFrom(scope: SkillScope, workspacePath: string | undefined, skillFile: string, fallbackName: string, content: string): SkillSummary | null {
+  private entryFrom(scope: SkillScope, workspacePath: string | undefined, skillFile: string, fallbackName: string, content: string): SkillEntry | null {
     const { frontmatter } = parseSkillContent(content)
     const parsed = this.parseFrontmatter(frontmatter, fallbackName)
     const name = parsed.name ?? fallbackName
@@ -210,8 +222,7 @@ export class SkillStore {
       whenToUse: parsed.whenToUse,
       modelInvocable: parsed.disableModelInvocation !== true,
       userInvocable: parsed.userInvocable !== false,
-      scope,
-      workspacePath,
+      target: { scope, workspacePath },
       path: dirname(skillFile),
     }
   }

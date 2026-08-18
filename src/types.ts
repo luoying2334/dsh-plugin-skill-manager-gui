@@ -27,7 +27,7 @@ export interface WorkspaceInfo {
 /** Kebab-case skill name, matching the DSH skill-filesystem contract. */
 export const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
-/** Summary of one skill, the shape returned by `GET /skill-manager/list`. */
+/** A skill grouped by name, the shape returned by `GET /skill-manager/list`. */
 export interface SkillSummary {
   readonly name: string
   readonly description: string
@@ -36,16 +36,25 @@ export interface SkillSummary {
   readonly modelInvocable: boolean
   /** Mirrors the `user-invocable` frontmatter. */
   readonly userInvocable: boolean
-  readonly scope: SkillScope
-  readonly workspacePath?: string
-  /** Absolute directory of the skill bundle on the host (informational). */
+  /** Every location this skill is installed to (one or more). */
+  readonly locations: SkillTarget[]
+  /** Bundle directory of the first location (informational). */
   readonly path: string
 }
 
-/** Full skill body, the shape returned by `GET /skill-manager/read`. */
-export interface SkillBody extends SkillSummary {
+/** Full body of one instance, the shape returned by `GET /skill-manager/read`. */
+export interface SkillBody {
+  readonly name: string
+  readonly description: string
+  readonly whenToUse?: string
+  readonly modelInvocable: boolean
+  readonly userInvocable: boolean
   /** The markdown instruction body (frontmatter stripped). */
   readonly content: string
+  /** The specific instance this body was read from. */
+  readonly target: SkillTarget
+  /** Absolute directory of the skill bundle on the host. */
+  readonly path: string
 }
 
 /** Payload for `POST /skill-manager/write` (create or update). */
@@ -58,14 +67,15 @@ export interface SkillWriteRequest {
   readonly content: string
   /** One or more install locations (global, or one or more workspaces — never mixed). */
   readonly targets: readonly SkillTarget[]
-  /** When editing, the instance's previous location — removed when not in `targets`. */
-  readonly previousTarget?: SkillTarget
+  /** When editing, the skill's previous locations — any not in `targets` are removed. */
+  readonly previousTargets?: readonly SkillTarget[]
 }
 
 /** Payload for `POST /skill-manager/remove`. */
 export interface SkillRemoveRequest {
   readonly name: string
-  readonly target: SkillTarget
+  /** Remove the skill from each of these locations. */
+  readonly targets: readonly SkillTarget[]
 }
 
 /** Uniform error envelope for non-2xx responses. */
