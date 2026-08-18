@@ -1,13 +1,13 @@
 /**
- * Skill manager settings section: lists managed skills (catalog-style), and
- * provides create / edit / delete / ZIP-import flows backed by the host HTTP
- * routes under `/skill-manager`.
+ * Skill manager settings section: lists managed skills (catalog-style, matching
+ * the DSH Plugins → Plugin list layout), and provides create / edit / delete /
+ * ZIP-import flows backed by the host HTTP routes under `/skill-manager`.
  */
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { createElement as h, Fragment } from 'react'
 import {
-  Button, DisclosureRow, Input, Modal, Pill, StateDot,
-  IconPlusOutline16, IconEditOutline16, IconTrashOutline16, IconSkillOutline16, IconSearchOutline16, IconDownloadOutline16,
+  Button, Input, Modal, Pill,
+  IconPlusOutline16, IconEditOutline16, IconTrashOutline16, IconSearchOutline16, IconDownloadOutline16, IconChevronDownOutline14,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   SKILL_NAME_RE, type SkillBody, type SkillSummary, type SkillTarget, type SkillWriteRequest, type WorkspaceInfo,
@@ -75,7 +75,7 @@ export function SkillManager({ t }: { t: Translate }) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ScopeFilter>('all')
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [draft, setDraft] = useState<SkillDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -133,15 +133,6 @@ export function SkillManager({ t }: { t: Translate }) {
   )
 
   const rowKey = (summary: SkillSummary): string => `${summary.scope}:${summary.workspacePath ?? ''}:${summary.name}`
-
-  const toggleExpanded = (key: string) => {
-    setExpanded((current) => {
-      const next = new Set(current)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
 
   const openNew = () => {
     setFormError(null)
@@ -298,44 +289,70 @@ export function SkillManager({ t }: { t: Translate }) {
 
       status !== null && h('p', { className: css.status }, status),
 
-      h('div', { className: css.toolbar },
-        h(Input, { className: css.search, icon: h(IconSearchOutline16), placeholder: t('search.placeholder'), value: query, onChange: onQuery }),
+      h('div', { className: css.catalog },
+        h('label', { className: css.search },
+          h(IconSearchOutline16),
+          h('span', { className: css.visuallyHidden }, t('search.placeholder')),
+          h('input', { type: 'search', value: query, placeholder: t('search.placeholder'), 'aria-label': t('search.placeholder'), onChange: onQuery }),
+        ),
         h('div', { className: css.pillGroup },
           h(Pill, { active: filter === 'all', onClick: () => setFilter('all') }, t('filter.all')),
           h(Pill, { active: filter === 'user', onClick: () => setFilter('user') }, t('filter.user')),
           h(Pill, { active: filter === 'workspace', onClick: () => setFilter('workspace') }, t('filter.workspace')),
         ),
+        h('div', { className: css.catalogHeading },
+          h('h3', null, t('catalog')),
+          h('span', { 'data-skill-count': filtered.length }, String(filtered.length)),
+        ),
+        loading
+          ? h('p', { className: css.statusText }, t('status.loading'))
+          : loadError !== null
+            ? h('p', { className: css.error }, `${t('error.load')}: ${loadError}`)
+            : filtered.length === 0
+              ? h('p', { className: css.statusText }, t('list.empty'))
+              : h('ul', { className: css.cards },
+                  filtered.map((skill) => {
+                    const open = expandedKey === rowKey(skill)
+                    const location = locationLabel(targetOf(skill))
+                    return h('li', { className: css.card, key: rowKey(skill), 'data-open': open ? 'true' : undefined },
+                      h('button', {
+                        className: css.cardContent,
+                        type: 'button',
+                        'aria-expanded': open,
+                        onClick: () => setExpandedKey(open ? null : rowKey(skill)),
+                      },
+                        h('strong', { className: css.cardTitle, title: skill.name }, skill.name),
+                        h('span', { className: css.cardTrailing },
+                          h('span', { className: css.statusDot, 'data-scope': skill.scope, role: 'img', 'aria-label': location, title: location }),
+                          h('span', { className: css.configTag, 'data-enabled': skill.scope === 'user' ? 'true' : 'false' }, location),
+                          h(IconChevronDownOutline14, { className: css.chevron, size: 12 }),
+                        ),
+                      ),
+                      open ? h('div', { className: css.cardDetails },
+                        h('p', { className: css.rowDesc }, skill.description),
+                        h('dl', { className: css.details },
+                          h('div', null,
+                            h('dt', null, t('field.location')),
+                            h('dd', null, location),
+                          ),
+                          h('div', null,
+                            h('dt', null, t('field.modelInvocable')),
+                            h('dd', null, skill.modelInvocable ? t('badge.model') : '—'),
+                          ),
+                          h('div', null,
+                            h('dt', null, t('field.userInvocable')),
+                            h('dd', null, skill.userInvocable ? t('badge.user') : '—'),
+                          ),
+                        ),
+                        h('div', { className: css.rowActions },
+                          h(Button, { size: 'sm', icon: h(IconEditOutline16), onClick: () => { void openEdit(skill) } }, t('action.edit')),
+                          h(Button, { size: 'sm', icon: h(IconTrashOutline16), onClick: () => setConfirmTarget(skill) }, t('action.delete')),
+                        ),
+                      ) : null,
+                    )
+                  }),
+                ),
       ),
-
-      loading
-        ? h('p', { className: css.muted }, t('status.loading'))
-        : loadError !== null
-          ? h('p', { className: css.error }, `${t('error.load')}: ${loadError}`)
-          : filtered.length === 0
-            ? h('p', { className: css.muted }, t('list.empty'))
-            : h('div', { className: css.list },
-                filtered.map((skill) => h(DisclosureRow, {
-                  key: rowKey(skill),
-                  icon: h(IconSkillOutline16),
-                  title: skill.name,
-                  open: expanded.has(rowKey(skill)),
-                  expandable: true,
-                  expandOnRowClick: true,
-                  onToggle: () => toggleExpanded(rowKey(skill)),
-                  collapsedContent: h(Fragment, null,
-                    h(StateDot, { state: 'done', className: css.locationDot }),
-                    h('span', { className: css.scopeTag }, locationLabel(targetOf(skill))),
-                    skill.modelInvocable && h('span', { className: css.badge }, t('badge.model')),
-                    skill.userInvocable && h('span', { className: css.badge }, t('badge.user')),
-                  ),
-                }, h('div', { className: css.rowDetail },
-                  h('p', { className: css.rowDesc }, skill.description),
-                  h('div', { className: css.rowActions },
-                    h(Button, { size: 'sm', icon: h(IconEditOutline16), onClick: () => { void openEdit(skill) } }, t('action.edit')),
-                    h(Button, { size: 'sm', icon: h(IconTrashOutline16), onClick: () => setConfirmTarget(skill) }, t('action.delete')),
-                  ),
-                ))),
-              ),
     ),
 
     draft !== null && h(Modal, {
